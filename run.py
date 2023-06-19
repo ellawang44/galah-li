@@ -1,4 +1,4 @@
-from fit import FitBroad, FitLi, FitLiFixed, iter_fit, amp_to_init, pred_amp, line
+from fit import FitBroad, FitLi, FitLiFixed, iter_fit, amp_to_init, pred_amp, line, cc_rv
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
@@ -136,10 +136,14 @@ class FitSpec:
         # deal with metal poor first
         if self.metal_poor:
             # if metal poor, no CN, because otherwise it's uncontrained again
-            fitter = FitLi(self.li_center, self.teff, self.logg, self.feh, self.interp, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim)
+            fitter = FitLi(self.teff, self.logg, self.feh, self.interp, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim)
+            # use cross correlated initial rv
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
-            #init = [amp_to_ali(1-amps[0], self.teff), self.std_galah, 0]
-            init = [max(amps[0]*self.std_galah*np.sqrt(2*np.pi), self.min_ew), self.std_galah, 0]
+            res = amp_to_init(amps, self.std_galah, 0)
+            init_rv = cc_rv(spectra['wave_norm'], spectra['sob_norm'], [self.li_center], res[:-1], res[-1], self.rv_lim)
+            amps, err = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], [self.li_center], rv=init_rv)
+            init = amp_to_init(amps, self.std_galah, init_rv)
+            #init = [max(amps[0]*self.std_galah*np.sqrt(2*np.pi), self.min_ew), self.std_galah, 0]
             res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
             std_li = res[1]
             rv = res[2]
@@ -185,20 +189,18 @@ class FitSpec:
     def plot_li(self, spectra):
         res = self.li_fit
         
-        # metal poor std
-        if not self.metal_poor:
-            std = self.broad_fit['std']
-        else:
-            std = res['std']
-        
         # set up plot
         plt.errorbar(spectra['wave_norm'], spectra['sob_norm'], yerr=spectra['uob_norm'], label='observed', color='black', alpha=0.5)
         plt.title(f'{res["amps"][0]:.4f} {res["amps"][1]:.4f} {res["std"]:.1f} {self.delta_ew:.4f}')
         # set up errors
         err = None #TODO
         # different plots
-        fitter = FitLiFixed(center=self.narrow_center[1:], std=std, rv=res['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp, max_ew=self.max_ew, min_ew=self.min_ew)
-        fitter.model(spectra['wave_norm'], [res['amps'][0], res['std'], *res['amps'][1:]], plot=True, plot_all=True)
+        if self.broad_fit is None:
+            fitter = FitLi(self.teff, self.logg, self.feh, self.interp, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim)
+            fitter.model(spectra['wave_norm'], [res['amps'][0], res['std'], res['rv']], plot=True)
+        else:
+            fitter = FitLiFixed(center=self.narrow_center[1:], std=broad_fit['std'], rv=broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp, max_ew=self.max_ew, min_ew=self.min_ew)
+            fitter.model(spectra['wave_norm'], [res['amps'][0], res['std'], *res['amps'][1:]], plot=True, plot_all=True)
             #upper = res['amps'][0] + err
             #lower = res['amps'][0] - err
             #if lower < self.min_ew: # reflect lower error

@@ -15,7 +15,7 @@ _spectra = Spectra()
 _spectra.cut_models = _spectra.models[136:298]
 _wl = vac_to_air(read.get_wavelengths()*10)[136:298]
 
-def line(x, ew, center, std, rv, breidablik=False, teff=None, logg=None, feh=None, rew_to_abund=None, plot=False, ax=None):
+def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, feh=None, rew_to_abund=None, plot=False, ax=None):
     '''Create a spectral line, either gaussian or from breidablik. There are some overlapping values.
     
     Parameters
@@ -190,7 +190,7 @@ class FitBroad:
         y = np.ones(len(wl_obs))
         
         for a, c in zip(ews, self.center):
-            y1 = line(wl_obs, a, c, std, offset, plot=plot_all, ax=ax)
+            y1 = line(wl_obs, a, std, offset, center=c, plot=plot_all, ax=ax)
             y *= y1
         
         # plot
@@ -207,13 +207,11 @@ class FitLi:
     For metal-poor stars
     '''
 
-    def __init__(self, center, teff, logg, feh, rew_to_abund, max_ew, min_ew, stdu=None, rv_lim=None):
+    def __init__(self, teff, logg, feh, rew_to_abund, max_ew, min_ew, stdu=None, rv_lim=None):
         '''Optional parameters are not needed if only using the model and not fitting.
         
         Parameters
         ----------
-        center : float
-            The center that the line is at. Should just be 6707.8139458 Li line center.
         teff : float
             Used in breidablik, teff of star
         logg : float
@@ -232,7 +230,6 @@ class FitLi:
             The limit on rv, mirrored limit on either side, it is the same limit as stdu, except in km/s. 
         '''
 
-        self.center = center
         self.teff = teff
         self.logg = logg
         self.feh = feh
@@ -267,9 +264,11 @@ class FitLi:
         bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
                 (0, self.stdu), # no lower limit on std for breidablik since it has thermal broadening
                 (-self.rv_lim, self.rv_lim)] # based on stdu, except in km/s
-        
+       
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds)
         res = minimize(func, init, method='Nelder-Mead')
+
+        plt.show()
 
         return res.x, res.fun
 
@@ -292,7 +291,7 @@ class FitLi:
         '''
     
         ews, std, offset = params
-        y = line(wl_obs, ews, self.center, std, offset, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, plot=plot, ax=ax)
+        y = line(wl_obs, ews, std, offset, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, plot=plot, ax=ax)
         
         return y
 
@@ -328,7 +327,7 @@ class FitLiFixed:
         stdu : float, optional
             The upper limit on std in \AA, this is based on the broadening for GALAH (roughly R=22000)
         '''
-
+        
         self.center = center
         self.std = std
         self.rv = rv
@@ -391,10 +390,10 @@ class FitLiFixed:
         '''
 
         ali, std_li, *ews = params
-        y = line(wl_obs, ali, 6707.814, std_li, self.rv, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, plot=plot, ax=ax) 
+        y = line(wl_obs, ali, std_li, self.rv, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, plot=plot, ax=ax) 
         
         for a, c in zip(ews, self.center):
-            y1 = line(wl_obs, a, c, self.std, self.rv, plot=plot_all, ax=ax)
+            y1 = line(wl_obs, a, self.std, self.rv, center=c, plot=plot_all, ax=ax)
             y *= y1
         
         # plot
@@ -624,7 +623,7 @@ def iter_fit(wl, flux, flux_err, center, stdl, stdu, std_init, rv_lim):
         iterations += 1
         if iterations >= 5:
             res = initial_res
-            print('iterations over 5')
+            print('Broad region iterations over 5')
             break
     
     # check metal-poor again because some fits are bad
