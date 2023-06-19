@@ -141,7 +141,7 @@ class FitSpec:
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
             res = amp_to_init(amps, self.std_galah, 0)
             init_rv = cc_rv(spectra['wave_norm'], spectra['sob_norm'], [self.li_center], res[:-1], res[-1], self.rv_lim)
-            amps, err = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], [self.li_center], rv=init_rv)
+            amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], [self.li_center], rv=init_rv)
             init = amp_to_init(amps, self.std_galah, init_rv)
             #init = [max(amps[0]*self.std_galah*np.sqrt(2*np.pi), self.min_ew), self.std_galah, 0]
             res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
@@ -153,9 +153,8 @@ class FitSpec:
             # pred all amps, or else underestimated too hard
             # remove li prediction and tag on other proper things
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'])
-            #init = [amp_to_ali(1-amps[0], self.teff), self.broad_fit['std'], *amps[1:]]
-            ew = amps[0]*self.broad_fit['std']*np.sqrt(2*np.pi)
-            init = [min(max(ew, self.min_ew), self.max_ew), self.broad_fit['std'], *amps[1:]]
+            init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'])[:-2] # remove std and rv, fixed
+            init = [min(max(init[0], self.min_ew), self.max_ew), self.broad_fit['std'], *init[1:]] # reformat
             res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
             std_li = res[1]
             rv = self.broad_fit['rv']
@@ -199,7 +198,7 @@ class FitSpec:
             fitter = FitLi(self.teff, self.logg, self.feh, self.interp, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim)
             fitter.model(spectra['wave_norm'], [res['amps'][0], res['std'], res['rv']], plot=True)
         else:
-            fitter = FitLiFixed(center=self.narrow_center[1:], std=broad_fit['std'], rv=broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp, max_ew=self.max_ew, min_ew=self.min_ew)
+            fitter = FitLiFixed(center=self.narrow_center[1:], std=self.broad_fit['std'], rv=self.broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp, max_ew=self.max_ew, min_ew=self.min_ew)
             fitter.model(spectra['wave_norm'], [res['amps'][0], res['std'], *res['amps'][1:]], plot=True, plot_all=True)
             #upper = res['amps'][0] + err
             #lower = res['amps'][0] - err

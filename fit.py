@@ -268,8 +268,6 @@ class FitLi:
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds)
         res = minimize(func, init, method='Nelder-Mead')
 
-        plt.show()
-
         return res.x, res.fun
 
     def model(self, wl_obs, params, plot=False, ax=None):
@@ -601,7 +599,6 @@ def iter_fit(wl, flux, flux_err, center, stdl, stdu, std_init, rv_lim):
     init_rv = cc_rv(wl, flux, center, res[:-1], res[-1], rv_lim)
     # get initial amp
     amps, err = pred_amp(wl, flux, flux_err, center, rv=init_rv)
-    #plt.scatter(center*(1+init_rv/3e5), 1-amps, color='red')
     init = amp_to_init(amps, std_init, init_rv)
     # check metal-poor star
     if check_mp(amps, err):
@@ -623,7 +620,7 @@ def iter_fit(wl, flux, flux_err, center, stdl, stdu, std_init, rv_lim):
         iterations += 1
         if iterations >= 5:
             res = initial_res
-            print('Broad region iterations over 5')
+            print('iterations over 5')
             break
     
     # check metal-poor again because some fits are bad
