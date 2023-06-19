@@ -12,8 +12,8 @@ from config import *
 import copy
 
 # set up plotting and saving
-save_fit = True
-load_fit = True
+save_fit = False
+load_fit = False
 plot = True
 save = False
 
@@ -45,10 +45,10 @@ elif key == 'test':
     #objectids = [180604003701205, 180604003701233, 170412004902165, 140710000801284] # SNR > 1200, check CN is fine
     #objectids = [160813005101117] # highest rot, 98 km/s. looks valid, all flags good, detection
     #objectids = [170912001201076] # breidablik ali is lower than gaussian, idk
-    #objectids = [140808000901102, 150607003602126, 170506003401371, 160403002501179] # paper examples
+    objectids = [140808000901102, 150607003602126, 170506003401371, 160403002501179] # paper examples
     #objectids = [140607000701111, 160403002501179, 170506003401371, 140808000901102] # mcmc test
     #objectids = [170510005801366] # large sat pcov
-    objectids = [150903002901344] # low detection
+    #objectids = [150903002901344] # low detection
     #objectids = np.load('rerun.npy')
     # inherant broadening FWHM 10 km/s
     # initialise on pixel depth
@@ -119,7 +119,6 @@ for i in objectids:
         # fit li region
         spectra = cut(spectra, 6704, 6711)
         fitspec.fit_li(spectra) # deals with metal poor
-        fitspec.fit_sat(spectra) # deals with saturation
         fitspec.get_err(spectra['CDELT1']) # calculates delta_ew
         
         if save_fit:
