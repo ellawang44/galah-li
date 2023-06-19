@@ -6,10 +6,12 @@ import os
 working_directory = '/priv/avatar/thomasn/GALAH/com'
 
 # directory which has access to the code, things will be launched from here
-main_directory = '/priv/avatar/ellawang/GALAH'
+main_directory = '/priv/avatar/ellawang/galah-li'
 
 # the intermediate directory to dump files needed to run the code 
-info_directory = '/priv/avatar/ellawang/GALAH/data'
+info_directory = '/priv/avatar/ellawang/galah-li/data'
+if not os.path.isdir(f'{info_directory}'):
+    os.mkdir(f'{info_directory}')
 # need to have a folder named fits inside it
 if not os.path.isdir(f'{info_directory}/fits'):
     os.mkdir(f'{info_directory}/fits')
@@ -18,4 +20,4 @@ if not os.path.isdir(f'{info_directory}/fits'):
 DR = 'GALAH_DR3_main_allspec_v2.fits'
 
 # results directory
-output_directory = '/priv/avatar/ellawang/GALAH/results'
+output_directory = '/priv/avatar/ellawang/galah-li/results'
