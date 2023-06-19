@@ -114,29 +114,22 @@ class FitSpec:
         return func#, CubicSpline(rews, abunds) #cubicspline is causing too many issues with increasing x value 
 
     def fit_broad(self, spectra, center=np.array([6696.085, 6698.673, 6703.565, 6705.101, 6710.317, 6711.819, 6713.095, 6713.742, 6717.681])):
-        res, pcov = iter_fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], center=center, stdl=self.stdl, stdu=self.stdu, std_init=self.std_galah, rv_lim=self.rv_lim, sobject_id=self.sid)
+        res = iter_fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], center=center, stdl=self.stdl, stdu=self.stdu, std_init=self.std_galah, rv_lim=self.rv_lim, sobject_id=self.sid)
         # metal poor star
         if res is None:
             self.metal_poor = True
             self.broad_fit = None
         else:
             self.metal_poor = False
-            #self.broad_fit = {'amps':res[:-2], 'std':res[-2], 'rv':res[-1], 'e_amps':pcov[:-2], 'e_std':pcov[-2], 'e_rv':pcov[-1]}
-            self.broad_fit = {'amps':res[:-2], 'std':res[-2], 'rv':res[-1], 'pcov':pcov}
+            self.broad_fit = {'amps':res[:-2], 'std':res[-2], 'rv':res[-1]}
         self.broad_center = center
-
-    def fit_halpha(self, spectra):
-        # pcov not implemented because this function is not used
-        fit = FitBroad(center=np.array([6563]), stdl=0.01, stdu=2, rv_lim=50)
-        res, _ = fit.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=[1.4, 0.5, 0])
-        self.halpha_fit = {'amp':res[0], 'std':res[1], 'rv':res[2]}
 
     def fit_li(self, spectra, center=np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.961])):
         self.narrow_center = center
         # deal with metal poor first
         if self.metal_poor:
             fit_all = FitBroad(center=np.array([self.li_center]), stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
-            res, pcov = iter_fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], center=np.array([self.li_center]), stdl=self.stdl, stdu=self.stdu, std_init=self.std_galah, rv_lim=self.rv_lim, Li=True, sobject_id=self.sid)
+            res = iter_fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], center=np.array([self.li_center]), stdl=self.stdl, stdu=self.stdu, std_init=self.std_galah, rv_lim=self.rv_lim, Li=True, sobject_id=self.sid)
             minchisq = np.sum(np.square((fit_all.model(spectra['wave_norm'], res) - spectra['sob_norm'])/spectra['uob_norm']))
             amps = [res[0], 0, 0, 0, 0, 0]
             std = res[1]
@@ -146,13 +139,12 @@ class FitSpec:
             fitter = FitFixed(center=self.narrow_center, std=self.broad_fit['std'], rv=self.broad_fit['rv'])
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'])
             init = amp_to_init(amps, std=self.broad_fit['std'], rv=self.broad_fit['rv'])
-            res, pcov, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init[:-2])
+            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init[:-2])
             std = self.broad_fit['std']
             rv = self.broad_fit['rv']
             amps = res
         # save Li fit
-        #self.li_fit = {'amps':amps, 'std':std, 'rv':rv, 'minchisq':minchisq, 'e_amps':e_amps, 'e_std':e_std, 'e_rv':e_rv}
-        self.li_fit = {'amps':amps, 'std':std, 'rv':rv, 'minchisq':minchisq, 'pcov':pcov}
+        self.li_fit = {'amps':amps, 'std':std, 'rv':rv, 'minchisq':minchisq}
 
     def fit_sat(self, spectra):
         self.sat_fit = {}
@@ -179,7 +171,7 @@ class FitSpec:
                 amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
                 #init = [amp_to_ali(1-amps[0], self.teff), self.std_galah, 0]
                 init = [max(amps[0]*self.std_galah*np.sqrt(2*np.pi), self.min_ew), self.std_galah, 0]
-                res, pcov, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+                res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
                 std_li = res[1]
                 rv = res[2]
                 amps = [0,0,0,0,0]
@@ -191,12 +183,12 @@ class FitSpec:
                 #init = [amp_to_ali(1-amps[0], self.teff), self.li_fit['std'], *amps[1:]]
                 ew = amps[0]*self.li_fit['std']*np.sqrt(2*np.pi)
                 init = [min(max(ew, self.min_ew), self.max_ew), self.li_fit['std'], *amps[1:]]
-                res, pcov, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+                res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
                 std_li = res[1]
                 rv = self.broad_fit['rv']
                 amps = res[2:]
             # write results
-            self.sat_fit = {'amps':[res[0], *amps], 'std':std_li, 'rv':rv, 'minchisq':minchisq, 'pcov':pcov}
+            self.sat_fit = {'amps':[res[0], *amps], 'std':std_li, 'rv':rv, 'minchisq':minchisq}
 
             # determine if still saturated
             rew = np.log10(amps[0]/self.li_center)
@@ -212,15 +204,6 @@ class FitSpec:
         else:
             std = self.broad_fit['std']
         self.delta_ew = error_factor*(1/self.snr)*(std*cdelt)**0.5
-
-    def plot_halpha(self, spectra):
-        fit = FitBroad(center=np.array([6563]), stdl=0.01, stdu=2, rv_lim=50) 
-        plt.errorbar(spectra['wave_norm'], spectra['sob_norm'], yerr=spectra['uob_norm'], color='black', alpha=0.5, label='observed')
-        fit.model(spectra['wave_norm'], params=[self.halpha_fit['amp'], self.halpha_fit['std'], self.halpha_fit['rv']], plot=True)
-        plt.xlabel(r'wavelengths ($\AA$)')
-        plt.ylabel('normalised flux') 
-        plt.legend()
-        plt.show()
 
     def plot_broad(self, spectra, center=None):
         fit_all = FitBroad(center=center or self.broad_center, stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
@@ -255,28 +238,28 @@ class FitSpec:
         plt.errorbar(spectra['wave_norm'], spectra['sob_norm'], yerr=spectra['uob_norm'], label='observed', color='black', alpha=0.5)
         plt.title(f'{res["amps"][0]:.4f} {res["amps"][1]:.4f} {res["std"]:.1f} {self.delta_ew:.4f}')
         # set up errors
-        err = np.sqrt(np.diag(res['pcov'])[0])
+        err = None #TODO
         # different plots
         if plot_sat:
             fitter = FitSatFixed(center=self.narrow_center[1:], std=std, rv=res['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp, max_ew=self.max_ew, min_ew=self.min_ew)
             fitter.model(spectra['wave_norm'], [res['amps'][0], res['std'], *res['amps'][1:]], plot=True)
-            upper = res['amps'][0] + err
-            lower = res['amps'][0] - err
-            if lower < self.min_ew: # reflect lower error
-                lower = abs(lower - self.min_ew) + self.min_ew
-                if lower > self.max_ew:
-                    print('lower reflected is larger than the max ew! Setting to min ew')
-                    lower = self.min_ew
-                l = line(spectra['wave_norm'], lower, self.li_center, res['std'], res['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp)
-                l = -(l - 1)+1
-            else:
-                l = line(spectra['wave_norm'], lower, self.li_center, res['std'], res['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp)
-            if upper > self.max_ew:
-                print('upper is higher than max ew! upper', upper, 'max_ew', self.max_ew)
-                print('setting to max ew')
-                upper = min(upper, self.max_ew)
-            u = line(spectra['wave_norm'], upper, self.li_center, res['std'], res['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp)
-            plt.fill_between(spectra['wave_norm'], u, l, facecolor='C0', alpha=0.5)
+            #upper = res['amps'][0] + err
+            #lower = res['amps'][0] - err
+            #if lower < self.min_ew: # reflect lower error
+            #    lower = abs(lower - self.min_ew) + self.min_ew
+            #    if lower > self.max_ew:
+            #        print('lower reflected is larger than the max ew! Setting to min ew')
+            #        lower = self.min_ew
+            #    l = line(spectra['wave_norm'], lower, self.li_center, res['std'], res['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp)
+            #    l = -(l - 1)+1
+            #else:
+            #    l = line(spectra['wave_norm'], lower, self.li_center, res['std'], res['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp)
+            #if upper > self.max_ew:
+            #    print('upper is higher than max ew! upper', upper, 'max_ew', self.max_ew)
+            #    print('setting to max ew')
+            #    upper = min(upper, self.max_ew)
+            #u = line(spectra['wave_norm'], upper, self.li_center, res['std'], res['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.interp)
+            #plt.fill_between(spectra['wave_norm'], u, l, facecolor='C0', alpha=0.5)
         else:
             fitter = FitFixed(center=self.narrow_center, std=res['std'], rv=res['rv'])
             fitter.model(spectra['wave_norm'], res['amps'], plot=True)

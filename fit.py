@@ -1,7 +1,7 @@
 from astro_tools import vac_to_air, air_to_vac
 import numpy as np
 from scipy.stats import norm
-from scipy.optimize import minimize, curve_fit
+from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from breidablik.interpolate.spectra import Spectra
 from breidablik.analysis import read, tools
@@ -15,22 +15,52 @@ _spectra = Spectra()
 _spectra.cut_models = _spectra.models[136:298]
 _wl = vac_to_air(read.get_wavelengths()*10)[136:298]
 
-def line(x, amp, center, std, rv, breidablik=False, teff=None, logg=None, feh=None, rew_to_abund=None, plot=False, ax=None):
-    '''create a line, either gaussian or from breidablik. There are some overlapping values. std and amp mean something different if breidablik is turned on vs off'''
-    if breidablik:
-        #lambda0 = 6707.814*(1+rv/_c)
-        lambda0 = 6707.814
-        ali = rew_to_abund(np.log10(amp/lambda0))
+def line(x, ew, center, std, rv, breidablik=False, teff=None, logg=None, feh=None, rew_to_abund=None, plot=False, ax=None):
+    '''Create a spectral line, either gaussian or from breidablik. There are some overlapping values.
+    
+    Parameters
+    ----------
+    x : 1darray
+        The wavelengths to evaluate the spectral line at
+    ew : float
+        The EW of the line
+    center : float
+        The center that the line is at. Parameter ignored if breidablik=True.
+    std : float
+        The standard deviation of the line. If breidablik=True, this is the amount that the std that goes into the Gaussian convolution.
+    rv : float
+        The radial velocity. 
+    breidablik : bool
+        If true, uses breidablik line profiles
+    teff : float, optional
+        Used in breidablik, teff of star
+    logg : float, optional
+        Used in breidablik, logg of star 
+    feh : float, optional
+        Used in breidablik, feh of star 
+    rew_to_abund : object
+        Converting REW to A(Li), used in Breidablik since the input there is A(Li), but the input to this function is EW
+    plot : bool
+        Plot the individual lines. 
+    ax : matplotlib.axes, optional
+        The axis to plot on, if None, then it's the default one. 
+    '''
+
+    if breidablik: # breidablik line profile
+        lambda0 = 6707.814*(1+rv/299792.458) # line center is shifted
+        ali = rew_to_abund(np.log10(ew/lambda0)) # convert EW to REW
         flux = _spectra._predict_flux(teff, logg, feh, [ali])[0] # this won't produce warnings anymore
+        # rv shift
         wl = _wl*(1+rv/299792.458)
         y = CubicSpline(wl, flux)(x)
+        # gaussian broaden
         spec = SpecAnalysis(x, y)
         _, y = spec._gaussian_broaden(center=6707.814, sigma=std*2.35482*_c/6707.814)
-    else:
-        y = 1-amp*norm.pdf(x, center*(1+rv/299792.458), std)
+    else: # Gaussian
+        y = 1-ew*norm.pdf(x, center*(1+rv/299792.458), std)
 
     if plot:
-        if ax is None:
+        if ax is None: # set axes
             ax = plt
         if breidablik:
             plt.plot(x, y, label='Li')
@@ -76,20 +106,11 @@ class FitBroad:
         bounds.append((-self.rv_lim, self.rv_lim))
         bounds = np.array(bounds).T
         
-        # try LM, if that fails, go to NM
-        try: 
-            func = lambda x,*amps:self.model(x,params=amps)
-            res = curve_fit(func, wl_obs, flux_obs, sigma=flux_err, p0=init, bounds=bounds, absolute_sigma=True)
-            fit = res[0]
-            pcov = res[1]
-        except RuntimeError:
-            func = lambda x: self.chisq(wl_obs, flux_obs, flux_err, x, bounds)
-            res = minimize(func, init, method='Nelder-Mead')
-            fit = res.x
-            pcov = [np.nan]
+        func = lambda x: self.chisq(wl_obs, flux_obs, flux_err, x, bounds)
+        res = minimize(func, init, method='Nelder-Mead')
+        fit = res.x
 
-        #return res[0], np.diag(res[1]), chisq
-        return fit, pcov, self.chisq(wl_obs, flux_obs, flux_err, fit, bounds)
+        return res.x, res.fun
 
     def chisq(self, wl_obs, flux_obs, flux_err, params, bounds):
         '''calculate the chisq
@@ -153,13 +174,18 @@ class FitFixed:
         bounds = [(0, np.inf) for _ in range(len(init))]
         bounds = np.array(bounds).T
         
-        func = lambda x,*amps:self.model(x,params=amps)
-        res = curve_fit(func, wl_obs, flux_obs, sigma=flux_err, p0=init, bounds=bounds, absolute_sigma=True)
+        func = lambda x: self.chisq(wl_obs, flux_obs, flux_err, x, bounds)
+        res = minimize(func, init, method='Nelder-Mead')
 
-        chisq = np.sum(np.square((self.model(wl_obs, res[0]) - flux_obs)/flux_err))
+        return res.x, res.fun
 
-        #return res[0], np.diag(res[1]), chisq
-        return res[0], res[1], chisq
+    def chisq(self, wl_obs, flux_obs, flux_err, params, bounds):
+        '''calculate the chisq
+        '''
+        for p, (l, r) in zip(params, bounds.T):
+            if (p < l) or (r < p):
+                return np.inf
+        return np.sum(np.square((self.model(wl_obs, params) - flux_obs)/flux_err))
 
     def model(self, wl_obs, params, plot=False, ax=None):
         '''Gaussian mixture model with std and rv
@@ -222,20 +248,10 @@ class FitSat:
         bounds = [(self.min_ew, self.max_ew), (0, self.stdu), (-self.rv_lim, self.rv_lim)] # -5 spectra is within 1e-5 of 1 for 4000, 1, 0
         bounds = np.array(bounds).T
         
-        # try LM, if that fails, go to NM
-        try: 
-            func = lambda x,*amps:self.model(x,params=amps)
-            res = curve_fit(func, wl_obs, flux_obs, sigma=flux_err, p0=init, bounds=bounds, absolute_sigma=True)
-            fit = res[0]
-            pcov = res[1]
-        except RuntimeError:
-            func = lambda x: self.chisq(wl_obs, flux_obs, flux_err, x, bounds)
-            res = minimize(func, init, method='Nelder-Mead')
-            fit = res.x
-            pcov = [np.nan]
+        func = lambda x: self.chisq(wl_obs, flux_obs, flux_err, x, bounds)
+        res = minimize(func, init, method='Nelder-Mead')
 
-        #return res[0], np.diag(res[1]), chisq
-        return fit, pcov, self.chisq(wl_obs, flux_obs, flux_err, fit, bounds)
+        return res.x, res.fun
 
     def chisq(self, wl_obs, flux_obs, flux_err, params, bounds):
         '''calculate the chisq
@@ -303,20 +319,10 @@ class FitSatFixed:
         bounds.extend([(0, np.inf) for _ in range(len(init)-2)])
         bounds = np.array(bounds).T
 
-        # try LM, if that fails, go to NM
-        try: 
-            func = lambda x,*amps:self.model(x,params=amps)
-            res = curve_fit(func, wl_obs, flux_obs, sigma=flux_err, p0=init, bounds=bounds, absolute_sigma=True)
-            fit = res[0]
-            pcov = res[1]
-        except RuntimeError:
-            func = lambda x: self.chisq(wl_obs, flux_obs, flux_err, x, bounds)
-            res = minimize(func, init, method='Nelder-Mead')
-            fit = res.x
-            pcov = [np.nan]
+        func = lambda x: self.chisq(wl_obs, flux_obs, flux_err, x, bounds)
+        res = minimize(func, init, method='Nelder-Mead')
 
-        #return res[0], np.diag(res[1]), chisq
-        return fit, pcov, self.chisq(wl_obs, flux_obs, flux_err, fit, bounds)
+        return res.x, res.fun
 
     def chisq(self, wl_obs, flux_obs, flux_err, params, bounds):
         '''calculate the chisq
@@ -432,14 +438,13 @@ def iter_fit(wl, flux, flux_err, center, stdl, stdu, std_init, rv_lim, Li=False,
     init = amp_to_init(amps, std_init, init_rv)
     # not just fitting Li, check metal-poor star
     if (not Li) and check_mp(amps, err):
-        return None, None
+        return None
 
     # get good initial fit
-    res0, pcov, _ = fitter.fit(wl, flux, flux_err, init)
+    res0, _ = fitter.fit(wl, flux, flux_err, init)
     if res0 is None: # metal poor star
-        return None, None
+        return None
     initial_res = np.copy(res0)
-    initial_pcov = np.copy(pcov)
     
     # iterate
     iterations = 1
@@ -447,17 +452,16 @@ def iter_fit(wl, flux, flux_err, center, stdl, stdu, std_init, rv_lim, Li=False,
         *tparams, rv = res0
         init_rv = cc_rv(wl, flux, center, tparams, rv, rv_lim)
         init_params = [*tparams, init_rv]
-        res0, pcov, _ = fitter.fit(wl, flux, flux_err, init=init_params)
+        res0,  _ = fitter.fit(wl, flux, flux_err, init=init_params)
         iterations += 1
         if iterations >= 5:
             res0 = initial_res
-            pcov = initial_pcov
             print('iterations over 5', sobject_id)
             break
     
     # check metal-poor again because some fits are bad
     if (not Li) and check_mp(res0[:-2], err):
-        return None, None
+        return None
 
-    return res0, pcov
+    return res0
 
