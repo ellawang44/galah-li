@@ -11,6 +11,8 @@ from run import FitSpec
 from config import *
 import copy
 
+#TODO; check how ultranest behaves when given a large boundary (it should be ok?)
+
 # set up plotting and saving
 save_fit = False
 load_fit = False
@@ -29,27 +31,26 @@ if os.path.exists(f'{output_directory}/{key}.npy') and save:
     objectids = []
 # testing purposes
 elif key == 'test':
-    #objectids = list(set([int(i[:-6]) for i in os.listdir('data/spec/com') if i[-4:] != '.txt'])) # my testing dataset, first 2 nights
-    #objectids = [170121002201384, 170121002201396, 170104002901059, 170108002201155, 170508006401346, 140812004401119, 140823001401041, 160418005601330, 180621002901320, 160519005201183, 160520002601357, 150607003602126, 150601003201221, 171228003702082, 160130003101273] # a range of chisq to test new fitting
-    #objectids = [140808000901102, 131216003201003, 140209005201151] # metal poor stars
-    #objectids = np.load('data/benchmark.npy') # benchmark stars
-    #objectids = [150112002502282] # young excited lil star
-    #objectids = [171228003702082, 160130003101273] # high chisq, flag=0 -- cont norm, idk what
-    #objectids = [140810002202184] # chisq min is correct but looks perhaps shifted?
-    #objectids = [170516004101176, 150901002401298, 160420003301307, 150208005201271] # std and rv still drawing a line for flag=0 -- old results, not sure if still on line now # currently using a non-giant test set for multiple gaussians
-    #objectids = [131120002001376] # high Li GC star
-    #objectids = [140314002601106, 140607000701111, 160403002501179] # saturated stars
-    #objectids = [131119001701221, 131216002601003, 150607003602126, 160530002201097] # Ce/V strong star, benchmark 0, 1 might be good edge case
-   # objectids = [140710001701284] # test pcov
-    #objectids = [161116002201392] # high feh, giant, check CN is fine, 
-    #objectids = [180604003701205, 180604003701233, 170412004902165, 140710000801284] # SNR > 1200, check CN is fine
-    #objectids = [160813005101117] # highest rot, 98 km/s. looks valid, all flags good, detection
-    #objectids = [170912001201076] # breidablik ali is lower than gaussian, idk
-    objectids = [140808000901102, 150607003602126, 170506003401371, 160403002501179] # paper examples
-    #objectids = [140607000701111, 160403002501179, 170506003401371, 140808000901102] # mcmc test
-    #objectids = [170510005801366] # large sat pcov
-    #objectids = [150903002901344] # low detection
-    #objectids = np.load('rerun.npy')
+    objectids = []
+    #objectids.extend([170121002201384, 170121002201396, 170104002901059, 170108002201155, 170508006401346, 140812004401119, 140823001401041, 160418005601330, 180621002901320, 160519005201183, 160520002601357, 150607003602126, 150601003201221, 171228003702082, 160130003101273]) # a range of chisq to test new fitting
+    #objectids.extend([140808000901102, 131216003201003, 140209005201151]) # metal poor stars
+    #objectids.extend(list(np.load('data/benchmark.npy'))) # benchmark stars
+    #objectids.append(150112002502282 # young excited lil star
+    #objectids.extend([171228003702082, 160130003101273]) # high chisq, flag=0 -- cont norm, idk what
+    #objectids.append(140810002202184) # chisq min is correct but looks perhaps shifted?
+    #objectids.extend([170516004101176, 150901002401298, 160420003301307, 150208005201271]) # std and rv still drawing a line for flag=0 -- old results, not sure if still on line now # currently using a non-giant test set for multiple gaussians
+    #objectids.append(131120002001376 # high Li GC star
+    #objectids.extend([140314002601106, 140607000701111, 160403002501179]) # saturated stars
+    #objectids.extend([131119001701221, 131216002601003, 150607003602126, 160530002201097]) # Ce/V strong star, benchmark 0, 1 might be good edge case
+    #objectids.append(140710001701284) # test pcov
+    #objectids.append(161116002201392) # high feh, giant, check CN is fine, 
+    #objectids.extend([180604003701205, 180604003701233, 170412004902165, 140710000801284]) # SNR > 1200, check CN is fine
+    #objectids.append(160813005101117) # highest rot, 98 km/s. looks valid, all flags good, detection
+    #objectids.append(170912001201076) # breidablik ali is lower than gaussian, idk
+    objectids.extend([140808000901102, 150607003602126, 170506003401371, 160403002501179]) # paper examples
+    #objectids.extend[140607000701111, 160403002501179, 170506003401371, 140808000901102]) # mcmc test
+    #objectids.append(170510005801366) # large sat pcov
+    #objectids.append(150903002901344) # low detection
     # inherant broadening FWHM 10 km/s
     # initialise on pixel depth
     # min, 10, 100, 1000, 10000, 100000, max

@@ -1,4 +1,4 @@
-from astro_tools import vac_to_air, air_to_vac
+from astro_tools import vac_to_air
 import numpy as np
 from scipy.stats import norm
 from scipy.optimize import minimize
@@ -24,12 +24,12 @@ def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, fe
         The wavelengths to evaluate the spectral line at
     ew : float
         The EW of the line
-    center : float
-        The center that the line is at. Parameter ignored if breidablik=True.
     std : float
         The standard deviation of the line. If breidablik=True, this is the amount that the std that goes into the Gaussian convolution.
     rv : float
         The radial velocity. 
+    center : float
+        The center that the line is at. Parameter ignored if breidablik=True.
     breidablik : bool
         If true, uses breidablik line profiles
     teff : float, optional
@@ -517,7 +517,7 @@ def filter_spec(spec, sigma=5):
     Parameters
     ----------
     spec : dict
-        Dictionary containing spectrum, from read (keys: wave_norm, sob_norm, uob_norm
+        Dictionary containing spectrum, from read (keys: wave_norm, sob_norm, uob_norm)
 
     Returns
     -------
