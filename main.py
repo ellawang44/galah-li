@@ -14,9 +14,9 @@ import copy
 #TODO; check how ultranest behaves when given a large boundary (it should be ok?)
 
 # set up plotting and saving
-save_fit = False # individual fits, 1 file per fit (all info)
+save_fit = True # individual fits, 1 file per fit (all info)
 load_fit = False # individual fits, 1 file per fit  (all info)
-plot = True 
+plot = False
 save = False # simplified fit results, compiled into 1 file
 
 # argparse to change keys easily
@@ -32,25 +32,22 @@ if os.path.exists(f'{output_directory}/{key}.npy') and save:
 # testing purposes
 elif key == 'test':
     objectids = []
-    #objectids.extend([170121002201384, 170121002201396, 170104002901059, 170108002201155, 170508006401346, 140812004401119, 140823001401041, 160418005601330, 180621002901320, 160519005201183, 160520002601357, 150607003602126, 150601003201221, 171228003702082, 160130003101273]) # a range of chisq to test new fitting
-    #objectids.extend([140808000901102, 131216003201003, 140209005201151]) # metal poor stars
-    #objectids.extend(list(np.load('data/benchmark.npy'))) # benchmark stars
-    #objectids.append(150112002502282 # young excited lil star
-    #objectids.extend([171228003702082, 160130003101273]) # high chisq, flag=0 -- cont norm, idk what
-    #objectids.append(140810002202184) # chisq min is correct but looks perhaps shifted?
-    #objectids.extend([170516004101176, 150901002401298, 160420003301307, 150208005201271]) # std and rv still drawing a line for flag=0 -- old results, not sure if still on line now # currently using a non-giant test set for multiple gaussians
-    #objectids.append(131120002001376 # high Li GC star
-    #objectids.extend([140314002601106, 140607000701111, 160403002501179]) # saturated stars
-    #objectids.extend([131119001701221, 131216002601003, 150607003602126, 160530002201097]) # Ce/V strong star, benchmark 0, 1 might be good edge case
-    #objectids.append(140710001701284) # test pcov
-    #objectids.append(161116002201392) # high feh, giant, check CN is fine, 
-    #objectids.extend([180604003701205, 180604003701233, 170412004902165, 140710000801284]) # SNR > 1200, check CN is fine
-    #objectids.append(160813005101117) # highest rot, 98 km/s. looks valid, all flags good, detection
-    #objectids.append(170912001201076) # breidablik ali is lower than gaussian, idk
+    objectids.extend([170121002201384, 170121002201396, 170104002901059, 170108002201155, 170508006401346, 140812004401119, 140823001401041, 160418005601330, 180621002901320, 160519005201183, 160520002601357, 150607003602126, 150601003201221, 171228003702082, 160130003101273]) # a range of chisq to test new fitting
+    objectids.extend([140808000901102, 131216003201003, 140209005201151]) # metal poor stars
+    objectids.extend(list(np.load('data/benchmark.npy'))) # benchmark stars
+    objectids.append(150112002502282) # young excited lil star
+    objectids.extend([171228003702082]) # cont norm is bad 
+    objectids.extend([170516004101176, 150901002401298, 160420003301307, 150208005201271]) # std and rv still drawing a line for flag=0 -- old results, not sure if still on line now # currently using a non-giant test set for multiple gaussians
+    objectids.append(131120002001376) # high Li GC star
+    objectids.extend([140314002601106, 140607000701111, 160403002501179]) # saturated stars
+    objectids.extend([131119001701221, 131216002601003, 150607003602126, 160530002201097]) # Ce/V strong star, benchmark 0, 1 might be good edge case
+    objectids.append(161116002201392) # high feh, giant, check CN is fine, 
+    objectids.extend([180604003701205, 180604003701233, 170412004902165, 140710000801284]) # SNR > 1200, check CN is fine
+    objectids.extend([160813005101117, 170912001201076]) # the spectrum is too blended, the initial guess is very hard to do correctly, current fit is bad, needs better initial guess
     objectids.extend([140808000901102, 150607003602126, 170506003401371, 160403002501179]) # paper examples
-    #objectids.extend[140607000701111, 160403002501179, 170506003401371, 140808000901102]) # mcmc test
-    #objectids.append(170510005801366) # large sat pcov
-    #objectids.append(150903002901344) # low detection
+    objectids.extend([140607000701111, 160403002501179, 170506003401371, 140808000901102]) # mcmc test
+    objectids.append(170510005801366) # very blended, very weak
+    objectids.append(150903002901344) # low detection
     # inherant broadening FWHM 10 km/s
     # initialise on pixel depth
     # min, 10, 100, 1000, 10000, 100000, max
@@ -120,7 +117,7 @@ for i in objectids:
         
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
-    
+
     if save:
         li_fit = fitspec.li_fit
         if li_fit is None:

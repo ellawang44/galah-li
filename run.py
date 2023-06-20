@@ -112,7 +112,7 @@ class FitSpec:
             The centers of the lines used in the fitting. First value is Li, not really used in the fitting, but needed for the initial guess. Default values:
             np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.961]))
         '''
-
+        
         self.narrow_center = center # save centers used
         
         # if any sp is nan, then don't do fit, because Breidablik breaks 
@@ -122,6 +122,7 @@ class FitSpec:
             self.fit_gaussian(spectra)
             return None
 
+        #TODO: has a tendency to fit poorly on broad spectra, need to modify initial conditions
         if self.metal_poor:
             # if metal poor, no CN, because otherwise it's uncontrained again
             fitter = FitB(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim)
@@ -213,13 +214,13 @@ class FitSpec:
             Dictionary containing spectrum, from read (keys: wave_norm, sob_norm, uob_norm) 
         '''
         
-        fit_all = FitG(center=self.broad_center, stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
         # observed spec
         plt.errorbar(spectra['wave_norm'], spectra['sob_norm'], yerr=spectra['uob_norm'], color='black', alpha=0.5, label='observed')
         # fit if not metal-poor (no fit if metal-poor)
         if self.broad_fit is not None:
             plt.title(f'{self.sid} {self.broad_fit["std"]:.4f} {self.broad_fit["rv"]:.4f} {self.snr:.2f}')
-            fit_all.model(spectra['wave_norm'], [*self.broad_fit['amps'], self.broad_fit['std'], self.broad_fit['rv']], plot=True)
+            fitter = FitG(center=self.broad_center, stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
+            fitter.model(spectra['wave_norm'], [*self.broad_fit['amps'], self.broad_fit['std'], self.broad_fit['rv']], plot=True)
         # plotting nonsense
         plt.xlim(6695, 6719)
         plt.xlabel(r'wavelengths ($\AA$)')
@@ -266,7 +267,7 @@ class FitSpec:
         dic = {'broad_fit':self.broad_fit, 'broad_center':self.broad_center, # broad region results
                 'metal_poor':self.metal_poor,
                 'li_fit':self.li_fit, 'narrow_center':self.narrow_center, # li region results
-                'mode':eslf.mode,
+                'mode':self.mode,
                 'delta_ew':self.delta_ew} 
         np.save(filepath, dic)
 

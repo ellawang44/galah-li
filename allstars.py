@@ -11,6 +11,8 @@ from read import read_spectra, read_meta, cut
 from run import FitSpec
 from fit import FitBroad, FitFixed, FitSat, FitSatFixed, filter_spec, line
 
+#TODO: check posteriors of high abundances
+
 output_directory = 'results'
 def grid_check(teffs, loggs, fehs):
     with open('grid_snapshot.txt', 'r') as f:
