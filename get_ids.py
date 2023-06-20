@@ -47,6 +47,6 @@ np.save(f'{info_directory}/id_dict.npy', split_dates, allow_pickle=True)
 with open('qsub_template', 'r') as f:
     raw = template(f.read())
     ncpu = len(split_dates.keys())
-    filled = raw.safe_substitute(ncpu=ncpu, jind=ncpu-1, main_directory=main_directory, keys=' '.join(split_dates.keys()))
+    filled = raw.safe_substitute(ncpu=ncpu-1, main_directory=main_directory, keys=' '.join(split_dates.keys()))
 with open('qsub', 'w') as f:
     f.write(filled)

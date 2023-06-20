@@ -1,8 +1,8 @@
 #!/bin/bash                                                 
 #PBS -N GALAH_Li
-#PBS -l select=1:ncpus=${ncpu}
+#PBS -l select=1:ncpus=1
 #PBS -q smallmem
-#PBS -J 0-${jind}
+#PBS -J 0-${ncpu}
 #PBS -r y
 
 cd ${main_directory}
