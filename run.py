@@ -1,4 +1,4 @@
-from fit import FitBroad, FitLi, FitLiFixed, iter_fit, amp_to_init, pred_amp, line, cc_rv, _spectra, _wl
+from fit import FitG, FitGFixed, FitB, FitBFixed, iter_fit, amp_to_init, pred_amp, line, cc_rv, _spectra, _wl
 import numpy as np
 import matplotlib.pyplot as plt
 from breidablik.interpolate.spectra import Spectra
@@ -119,12 +119,12 @@ class FitSpec:
         # these stars will be taken out later down the line anyway when EW -> A(Li)
         # so it doesn't really matter what is saved in here
         if np.isnan([self.teff, self.logg, self.feh]).any():
-            self.li_fit = None
+            self.fit_gaussian(spectra)
             return None
 
         if self.metal_poor:
             # if metal poor, no CN, because otherwise it's uncontrained again
-            fitter = FitLi(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim)
+            fitter = FitB(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim)
             # use cross correlated initial rv
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
             init = amp_to_init(amps, self.std_galah, 0)
@@ -138,7 +138,7 @@ class FitSpec:
             rv = res[2]
             amps = [0,0,0,0,0]
         else:
-            fitter = FitLiFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu)
+            fitter = FitBFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu)
             # initial guess from the amplitudes in the spectrum (a little bit overestimated)
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'])
             init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'])[:-2] # remove std and rv, fixed
@@ -150,6 +150,48 @@ class FitSpec:
             amps = res[2:]
         # save Li fit
         self.li_fit = {'amps':[res[0], *amps], 'std':std_li, 'rv':rv, 'minchisq':minchisq}
+        self.mode = 'Breidablik'
+    
+    def fit_gaussian(self, spectra, center=np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.961])):
+        '''Fit the Li region of the spectrum, fits ew, std, and rv if metal-poor (less than 3 lines with amplitudes above noise), or else fixes std and rv and only fits ews.
+        
+        Parameters
+        ----------
+        spectra : dict
+            Dictionary containing spectrum, from read (keys: wave_norm, sob_norm, uob_norm) 
+        center : 1darray
+            The centers of the lines used in the fitting. First value is Li, not really used in the fitting, but needed for the initial guess. Default values:
+            np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.961]))
+        '''
+
+        if self.metal_poor:
+            # if metal poor, no CN, because otherwise it's uncontrained again
+            fitter = FitG(center=[self.li_center], stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
+            # use cross correlated initial rv
+            amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
+            init = amp_to_init(amps, self.std_galah, 0)
+            init_rv = cc_rv(spectra['wave_norm'], spectra['sob_norm'], [self.li_center], init[:-1], init[-1], self.rv_lim)
+            # predict amps again with cross correlated initial rv
+            amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], [self.li_center], rv=init_rv)
+            init = amp_to_init(amps, self.std_galah, init_rv)
+            # fit and turn results into consistent format
+            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+            std_li = res[1]
+            rv = res[2]
+            amps = [0,0,0,0,0]
+        else:
+            fitter = FitGFixed(self.narrow_center, self.broad_fit['std'], self.broad_fit['rv'])
+            # initial guess from the amplitudes in the spectrum (a little bit overestimated)
+            amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'])
+            init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'])[:-2] # remove std and rv, fixed
+            # fit and turn results into consistent format
+            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+            std_li = self.broad_fit['std']
+            rv = self.broad_fit['rv']
+            amps = res[1:]
+        # save Li fit
+        self.li_fit = {'amps':[res[0], *amps], 'std':std_li, 'rv':rv, 'minchisq':minchisq}
+        self.mode = 'Gaussian'
 
     def get_err(self, cdelt):
         '''error from cayrel formula'''
@@ -171,7 +213,7 @@ class FitSpec:
             Dictionary containing spectrum, from read (keys: wave_norm, sob_norm, uob_norm) 
         '''
         
-        fit_all = FitBroad(center=self.broad_center, stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
+        fit_all = FitG(center=self.broad_center, stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
         # observed spec
         plt.errorbar(spectra['wave_norm'], spectra['sob_norm'], yerr=spectra['uob_norm'], color='black', alpha=0.5, label='observed')
         # fit if not metal-poor (no fit if metal-poor)
@@ -192,13 +234,18 @@ class FitSpec:
         # observation
         plt.errorbar(spectra['wave_norm'], spectra['sob_norm'], yerr=spectra['uob_norm'], label='observed', color='black', alpha=0.5)
         plt.title(f'{self.li_fit["amps"][0]:.4f} {self.li_fit["amps"][1]:.4f} {self.li_fit["std"]:.1f} {self.delta_ew:.4f}')
-        # different plots
-        if self.metal_poor:
-            fitter = FitLi(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim)
-            fitter.model(spectra['wave_norm'], [self.li_fit['amps'][0], self.li_fit['std'], self.li_fit['rv']], plot=True)
-        else:
-            fitter = FitLiFixed(center=self.narrow_center[1:], std=self.broad_fit['std'], rv=self.broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, max_ew=self.max_ew, min_ew=self.min_ew)
+        
+        # Breidablik
+        if self.mode == 'Breidablik':
+            if self.broad_fit is None: # metal-poor stars
+                self.broad_fit = {'std':self.li_fit['std'], 'rv':self.li_fit['rv']}
+            fitter = FitBFixed(center=self.narrow_center[1:], std=self.broad_fit['std'], rv=self.broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, max_ew=self.max_ew, min_ew=self.min_ew)
             fitter.model(spectra['wave_norm'], [self.li_fit['amps'][0], self.li_fit['std'], *self.li_fit['amps'][1:]], plot=True, plot_all=True)
+        # Gaussian
+        elif self.mode == 'Gaussian':
+            fitter = FitGFixed(center=self.narrow_center, std=self.li_fit['std'], rv=self.li_fit['rv'])
+            fitter.model(spectra['wave_norm'], self.li_fit['amps'], plot=True, plot_all=True)
+        
         #TODO: plot errors
         # plotting rubbish
         plt.legend()
@@ -219,6 +266,7 @@ class FitSpec:
         dic = {'broad_fit':self.broad_fit, 'broad_center':self.broad_center, # broad region results
                 'metal_poor':self.metal_poor,
                 'li_fit':self.li_fit, 'narrow_center':self.narrow_center, # li region results
+                'mode':eslf.mode,
                 'delta_ew':self.delta_ew} 
         np.save(filepath, dic)
 
@@ -240,5 +288,6 @@ class FitSpec:
         # li region results
         self.li_fit = dic['li_fit']
         self.narrow_center = dic['narrow_center']
+        self.mode = dic['mode']
         self.delta_ew = dic['delta_ew']
 

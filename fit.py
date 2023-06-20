@@ -104,7 +104,7 @@ def chisq(wl_obs, flux_obs, flux_err, model, params, bounds):
     return np.sum(np.square((model(wl_obs, params) - flux_obs)/flux_err))
 
 
-class FitBroad:
+class FitG:
     '''Fits std and rv simultaneously and a EW for each center given. 
     For broad region.
     '''
@@ -202,7 +202,95 @@ class FitBroad:
         return y
 
 
-class FitLi:
+class FitGFixed:
+    '''Fits EW for each center given. std and rv are fixed from broad region.
+    For when Breidablik fails with nan sp.
+    '''
+
+    def __init__(self, center, std, rv):
+        '''Optional parameters are not needed if only using the model and not fitting. 
+        
+        Parameters
+        ----------
+        center : 1darray
+            The line centers to be fitted. This should be np.array([6707.814, 6706.730, 6707.433, 6707.545, 6708.096, 6708.961])
+        std : float
+            The std found from the broad region.
+        rv : float
+            The rv found from the broad region.
+        '''
+
+        self.center = center
+        self.std = std
+        self.rv = rv
+
+    def fit(self, wl_obs, flux_obs, flux_err, init):
+        '''Fit std and rv of observed spectrum.
+        
+        Parameters
+        ----------
+        wl_obs : 1darray
+            observed wavelengths
+        flux_obs : 1darray
+            observed flux
+        flux_err : 1darray
+            observed flux error
+        init : list
+            The initial EW and std, rv; in that order. 
+
+        Returns
+        -------
+        fit, minchisq : 1darray, float
+            Fitted parameters: *EW, std, rv; minimum chisq value at best fit.
+        '''
+
+        # construct bounds
+        bounds = [(0, np.inf) for _ in range(len(init)-2)] # positive finite EW
+        
+        # fit
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds)
+        res = minimize(func, init, method='Nelder-Mead')
+        fit = res.x
+
+        return res.x, res.fun
+
+    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
+        '''Multiplying Gaussians together with a common std and rv. 
+
+        wl_obs : np.array
+            observed wavelengths
+        params : np.array
+            Parameters to the model: *EWs, std, rv
+        plot : bool
+            If True, turns on plotting.
+        ax : matplotlib.axes, optional
+            The axis to plot on, if None, then it's the default one. 
+        plot_all : bool
+            If True, plot each gaussian. Or else plot only final model.
+
+        Returns
+        -------
+        y : 1darray
+            The model evaluated at given parameters. All gaussians multiplied together.
+        '''
+        
+        ews = params
+        y = np.ones(len(wl_obs))
+        
+        for a, c in zip(ews, self.center):
+            y1 = line(wl_obs, a, self.std, self.rv, center=c, plot=plot_all, ax=ax)
+            y *= y1
+        
+        # plot
+        if plot:
+            if ax is None:
+                ax = plt
+            ax.plot(wl_obs, y, label='fit')
+        
+        return y
+
+
+class FitB:
     '''Fits Li EW, std, and rv simultaneously. 
     For metal-poor stars
     '''
@@ -294,7 +382,7 @@ class FitLi:
         return y
 
 
-class FitLiFixed:
+class FitBFixed:
     '''Fits Li EW, Li std, other ews simltaneously based on the centers given. std and rv are fixed from broad region.
     For non-metal-poor stars
     '''
@@ -476,7 +564,7 @@ def cross_correlate(wl, flux, centers, params, rv):
         The cross correlation between the observed spectrum and the model spectrum
     '''
     
-    fit_all = FitBroad(center=centers)
+    fit_all = FitG(center=centers)
     template = fit_all.model(wl, [*params, rv])
     cc = np.sum(template*flux)
     return cc
@@ -593,7 +681,7 @@ def iter_fit(wl, flux, flux_err, center, stdl, stdu, std_init, rv_lim):
     '''
 
     # get initial rv
-    fitter = FitBroad(center=center, stdl=stdl, stdu=stdu, rv_lim=rv_lim)
+    fitter = FitG(center=center, stdl=stdl, stdu=stdu, rv_lim=rv_lim)
     amps, _ = pred_amp(wl, flux, flux_err, center)
     res = amp_to_init(amps, std_init, 0)
     init_rv = cc_rv(wl, flux, center, res[:-1], res[-1], rv_lim)
