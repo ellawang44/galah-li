@@ -1,0 +1,12 @@
+#!/bin/bash                                                 
+#PBS -N GALAH_Li
+#PBS -l select=1:ncpus=${ncpu}
+#PBS -q smallmem
+#PBS -J 0-${jind}
+#PBS -r y
+
+cd ${main_directory}
+export PATH=/pkg/linux/anaconda3/bin:$PATH
+
+keys=(${keys})
+python3 hi.py -k ${keys[$PBS_ARRAY_INDEX]} 

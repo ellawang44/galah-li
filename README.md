@@ -12,8 +12,8 @@ analysing Li in GALAH
 
 4. Download and install `https://github.com/ellawang44/astro_tools`. If you already have `astro_tools` (my own repository) installed then you can skip this step. Might move all things over to the current repo in the future. Currently a bit messy though. 
 
-5. check qsub parameters - the ncpu is default, but the code is parallelised over the keys, these numbers are not compared. Reduce keys or increase ncpu as required.
-If you need to regen the qsub file since the keys are messed up, `run get_id.py`
+5. check `qsub_template` setup, if you need PBS commands add them. run `get_ids.py` to generate a filled in version of the template. You can change the threshold in `get_ids.py` to control the splitting done. 
+If you need to regen the qsub file since the keys are messed up, `run get_ids.py`
 
 6. run qsub
 

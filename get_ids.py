@@ -5,6 +5,7 @@ import os
 import numpy as np
 from collections import defaultdict
 from config import *
+from string import Template as template
 
 alphabet = 'abcdefghijklmn'
 
@@ -43,14 +44,9 @@ print('no. of chunks', len(split_dates.keys()))
 np.save(f'{info_directory}/id_dict.npy', split_dates, allow_pickle=True)
 
 # write qsub file
-qsub_string = f'''#!/bin/bash                                                                                                           
-#PBS -N GALAH_Li
-#PBS -l select=1:ncpus=56
-##PBS -l place=scatter:excl
-#PBS -q smallmem
-
-cd {main_directory}
-export PATH=/pkg/linux/anaconda3/bin:$PATH
-/home/thomasn/bin/parallel python3 main.py '''
+with open('qsub_template', 'r') as f:
+    raw = template(f.read())
+    ncpu = len(split_dates.keys())
+    filled = raw.safe_substitute(ncpu=ncpu, jind=ncpu-1, main_directory=main_directory, keys=' '.join(split_dates.keys()))
 with open('qsub', 'w') as f:
-    f.write(qsub_string + '-k {1} ::: ' + ' '.join(split_dates.keys()))
+    f.write(filled)
