@@ -119,7 +119,7 @@ class FitSpec:
         # these stars will be taken out later down the line anyway when EW -> A(Li)
         # so it doesn't really matter what is saved in here
         if np.isnan([self.teff, self.logg, self.feh]).any():
-            self.li_fit = {}
+            self.li_fit = None
             return None
 
         if self.metal_poor:
