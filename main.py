@@ -1,4 +1,4 @@
-# if a file doesn't exist, run setup.sh
+# if a file doesn't exist, run setup.sh and config.py
 
 from read import read_spectra, read_meta, cut
 import os
@@ -14,10 +14,10 @@ import copy
 #TODO; check how ultranest behaves when given a large boundary (it should be ok?)
 
 # set up plotting and saving
-save_fit = False
-load_fit = False
-plot = True
-save = False
+save_fit = False # individual fits, 1 file per fit (all info)
+load_fit = False # individual fits, 1 file per fit  (all info)
+plot = True 
+save = False # simplified fit results, compiled into 1 file
 
 # argparse to change keys easily
 parser = argparse.ArgumentParser(description='options for running')
@@ -81,83 +81,62 @@ for i in objectids:
     if spectra is None:
         continue
 
-    # H alpha
-    #spectra_halpha = copy.deepcopy(spectra)
-    #spectra_halpha = cut(spectra_halpha, 6558, 6568)
-    
-    # cut to region to determine rv
+    # cut to broad region for std and rv fitting
     spectra = cut(spectra, 6695, 6719)
-    spectra = filter_spec(spectra)
-    
+    spectra = filter_spec(spectra) 
     spectra_broad = copy.deepcopy(spectra)
     if len(spectra['wave_norm']) == 0: # some spectra broken
         continue
 
+    # cut to Li region for detailed fitting
+    spectra = cut(spectra, 6704, 6711)
+
     # identify object
     ind = np.where(i==sobject_id)[0][0]
-    
-    stdu = np.sqrt(vbroad[ind]**2 + (299792.458/22000)**2)*factor
+    stdu = np.sqrt(vbroad[ind]**2 + (299792.458/22000)**2)*factor # max std based on R=22000
     rv_lim = stdu/factor
-    stdl = 0.09 #10km/s FWHM based on intrinsic broadening #np.sqrt(vbroad[ind]**2 + (299792.458/32000)**2)*factor
+    stdl = 0.09 #10km/s FWHM based on intrinsic broadening 
+    #stdl = np.sqrt(vbroad[ind]**2 + (299792.458/32000)**2)*factor # min std based on R=32000
     std_galah = np.sqrt(vbroad[ind]**2 + (299792.458/25500)**2)*factor # eyeballed at R=25500
     if np.isnan(std_galah): # some DR3 have nan std
         continue
 
-    # get std and rv
+    # fitting
     fitspec = FitSpec(std_galah=std_galah, stdl=stdl, stdu=stdu, rv_lim=rv_lim, snr=SNR[ind], sid=i, teff=teff[ind], logg=logg[ind], feh=feh[ind])
+    # load fit
     if os.path.exists(f'{info_directory}/fits/{i}.npy') and load_fit:
         fitspec.load(f'{info_directory}/fits/{i}.npy')
-        spectra = cut(spectra, 6704, 6711)
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
+    # fit
     else:
-        # fit h alpha region
-        #fitspec.fit_halpha(spectra_halpha)
-
         # fit broad region
         fitspec.fit_broad(spectra_broad)
 
         # fit li region
-        spectra = cut(spectra, 6704, 6711)
-        fitspec.fit_li(spectra) # deals with metal poor
+        fitspec.fit_li(spectra) 
         fitspec.get_err(spectra['CDELT1']) # calculates delta_ew
+        #TODO error
         
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
     
-    #print(fitspec.broad_fit)
-    #print(fitspec.li_fit)
-    #print(fitspec.sat_fit)
-    #print(np.sqrt(np.diag(fitspec.sat_fit['pcov'])))
-    #print(fitspec.li_fit['amps'][0], fitspec.li_fit['e_amps'][0], fitspec.delta_ew)
-    
     if save:
-        res = fitspec.sat_fit
-        if len(res) == 0:
-            res = {'amps':[np.nan], 'minchisq':np.nan, 'std':np.nan, 'rv':np.nan, 'pcov':[np.nan]}
-        # save saturated or not
-        #if fitspec.sat:
-        #    res = fitspec.sat_fit # idk, pcov here is following the ALi, eali doesn't make sense
-        #else:
-        #    res = fitspec.li_fit
-        
-        std = res['std']
-        #if fitspec.metal_poor:
-        #    std = np.nan
-        #else:
-        #    std = fitspec.broad_fit['std']
-        data_line = [i, res['amps'][0], res['minchisq'], std, res['rv'], fitspec.delta_ew, np.sqrt(np.diag(fitspec.li_fit['pcov'])[0]), np.sqrt(np.diag(res['pcov'])[0])]
+        li_fit = fitspec.li_fit
+        if li_fit is None:
+            li_fit = {'amps':[np.nan], 'minchisq':np.nan, 'std':np.nan, 'rv':np.nan, 'pcov':[np.nan]}
+        broad_fit = fitspec.broad_fit
+        if broad_fit is None:
+            broad_fit = {'std':np.nan}
+
+        data_line = [i, li_fit['amps'][0], li_fit['minchisq'], broad_fit['std'], li_fit['std'], li_fit['rv']] #TODO: error
         data.append(data_line)
 
-    # plot halpha
-    #if plot:
-    #    fitspec.plot_halpha(spectra_halpha)
-    
-    # plot std and rv
+    # plot broad region
     if plot:
         fitspec.plot_broad(spectra_broad)
 
-    # plot results 
+    # plot Li region
     if plot:
         fitspec.plot_li(spectra)
 
@@ -171,18 +150,19 @@ if save and len(data) != 0:
         data[:,3],
         data[:,4],
         data[:,5],
-        data[:,6],
-        data[:,7]
+        #data[:,6],
+        #data[:,7]
         ], 
         dtype=[
             ('sobject_id', int),
             ('ew_li', np.float64),
             ('minchisq', np.float64),
             ('std', np.float64),
-            ('rv', np.float64),
-            ('delta_ew', np.float64),
-            ('li_pcov', np.float64),
-            ('pcov', np.float64)
+            ('li_std', np.float64),
+            ('rv', np.float64)
+            #('delta_ew', np.float64),
+            #('li_pcov', np.float64),
+            #('pcov', np.float64)
             ]
         )
     np.save(f'{output_directory}/{key}.npy', x)
