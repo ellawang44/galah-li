@@ -9,7 +9,7 @@ from astro_tools import SpecAnalysis
 from scipy.interpolate import CubicSpline
 
 _c = 299792.458 # speed of light in km s^-1 
-# optimised from 8s for 100 spectra to 2s - cut and gaussian_broaden using matrix
+# optimised from 8s for 100 spectra to 2s - cut mainly, gaussian broadening versions don't make too much of a difference
 _spectra = Spectra()
 # cut to 6703 - 6712 (a little bit extra for rv shift)
 _spectra.cut_models = _spectra.models[136:298]
@@ -74,7 +74,7 @@ def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, fe
 
     return y
 
-def chisq(wl_obs, flux_obs, flux_err, model, params, bounds):
+def chisq(wl_obs, flux_obs, flux_err, model, params, bounds, wl_left=None, wl_right=None):
     '''Calculate the chisq with bounds. If value is out of bounds, then chisq is inf. Note parameter and bounds need to have same ordering.
     
     Parameters
@@ -91,6 +91,10 @@ def chisq(wl_obs, flux_obs, flux_err, model, params, bounds):
         Parameters to the model
     bounds : 1darray
         Bounds for the parameters
+    wl_left : float, optional
+        Left wl bound to compute chisq over. Ignored if wl_right is None.
+    wl_right : float, optional
+        Right wl bound to compute chisq over. Ignored if wl_left is None.
 
     Returns
     -------
@@ -101,6 +105,12 @@ def chisq(wl_obs, flux_obs, flux_err, model, params, bounds):
     for p, (l, r) in zip(params, bounds):
         if (p < l) or (r < p):
             return np.inf
+    if (wl_left is not None) and (wl_right is not None):
+        mask = (wl_left <= wl_obs) & (wl_obs <= wl_right)
+        wl_obs = wl_obs[mask]
+        flux_obs = flux_obs[mask]
+        flux_err = flux_err[mask]
+
     return np.sum(np.square((model(wl_obs, params) - flux_obs)/flux_err))
 
 
@@ -248,7 +258,7 @@ class FitGFixed:
         bounds = [(0, np.inf) for _ in range(len(init)-2)] # positive finite EW
         
         # fit
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds)
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=self.center[0]*(1+self.rv/_c)-self.std, wl_right=self.center[-1]*(1+self.rv/_c)+self.std)
         res = minimize(func, init, method='Nelder-Mead')
         fit = res.x
 
@@ -350,7 +360,7 @@ class FitB:
         
         # construct bounds
         bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
-                (0, self.stdu), # no lower limit on std for breidablik since it has thermal broadening
+                (5e-4, self.stdu), # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s 
                 (-self.rv_lim, self.rv_lim)] # based on stdu, except in km/s
        
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds)
@@ -447,10 +457,10 @@ class FitBFixed:
         '''
 
         bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
-                (0, self.stdu)] # no lower limit on std for breidablik since it has thermal broadening
+                (5e-4, self.stdu)] # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s
         bounds.extend([(0, np.inf) for _ in range(len(init)-2)]) # positive finite EW
-
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds)
+      
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=self.center[0]*(1+self.rv/_c)-self.std, wl_right=self.center[-1]*(1+self.rv/_c)+self.std)
         res = minimize(func, init, method='Nelder-Mead')
 
         return res.x, res.fun

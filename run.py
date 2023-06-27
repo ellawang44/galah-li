@@ -221,7 +221,7 @@ class FitSpec:
             plt.title(f'{self.sid} {self.broad_fit["std"]:.4f} {self.broad_fit["rv"]:.4f} {self.snr:.2f}')
             fitter = FitG(center=self.broad_center, stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
             fitter.model(spectra['wave_norm'], [*self.broad_fit['amps'], self.broad_fit['std'], self.broad_fit['rv']], plot=True)
-        # plotting nonsense
+        
         plt.xlim(6695, 6719)
         plt.xlabel(r'wavelengths ($\AA$)')
         plt.ylabel('normalised flux')
@@ -230,16 +230,23 @@ class FitSpec:
 
     def plot_li(self, spectra):
         '''Plot the Li region and the fits. Meant to be a convenience function for quickly checking the fits are working.
+        
+        Parameters
+        ----------
+        spectra : dict
+            Dictionary containing spectrum, from read (keys: wave_norm, sob_norm, uob_norm) 
         '''
        
         # observation
         plt.errorbar(spectra['wave_norm'], spectra['sob_norm'], yerr=spectra['uob_norm'], label='observed', color='black', alpha=0.5)
         plt.title(f'{self.li_fit["amps"][0]:.4f} {self.li_fit["amps"][1]:.4f} {self.li_fit["std"]:.1f} {self.delta_ew:.4f}')
         
+        # metal-poor stars
+        if self.metal_poor: 
+            self.broad_fit = {'std':self.li_fit['std'], 'rv':self.li_fit['rv']}
+        
         # Breidablik
         if self.mode == 'Breidablik':
-            if self.broad_fit is None: # metal-poor stars
-                self.broad_fit = {'std':self.li_fit['std'], 'rv':self.li_fit['rv']}
             fitter = FitBFixed(center=self.narrow_center[1:], std=self.broad_fit['std'], rv=self.broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, max_ew=self.max_ew, min_ew=self.min_ew)
             fitter.model(spectra['wave_norm'], [self.li_fit['amps'][0], self.li_fit['std'], *self.li_fit['amps'][1:]], plot=True, plot_all=True)
         # Gaussian
@@ -248,7 +255,13 @@ class FitSpec:
             fitter.model(spectra['wave_norm'], self.li_fit['amps'], plot=True, plot_all=True)
         
         #TODO: plot errors
-        # plotting rubbish
+        if self.metal_poor:
+            li_shifted = self.li_center*(1+self.broad_fit['rv']/self.c)
+            plt.axvline(li_shifted-self.broad_fit['std']*3)
+            plt.axvline(li_shifted+self.broad_fit['std']*3)
+        else:
+            plt.axvline(self.narrow_center[1]*(1+self.broad_fit['rv']/self.c)-self.broad_fit['std'])
+            plt.axvline(self.narrow_center[-1]*(1+self.broad_fit['rv']/self.c)+self.broad_fit['std'])
         plt.legend()
         plt.xlabel(r'wavelengths ($\AA$)')
         plt.ylabel('normalised flux')
