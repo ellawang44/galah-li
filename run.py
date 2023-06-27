@@ -1,4 +1,4 @@
-from fit import FitG, FitGFixed, FitB, FitBFixed, iter_fit, amp_to_init, pred_amp, line, cc_rv, _spectra, _wl
+from fit import FitBroad, FitG, FitGFixed, FitB, FitBFixed, iter_fit, amp_to_init, pred_amp, line, cc_rv, _spectra, _wl
 import numpy as np
 import matplotlib.pyplot as plt
 from breidablik.interpolate.spectra import Spectra
@@ -134,9 +134,10 @@ class FitSpec:
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], [self.li_center], rv=init_rv)
             init = amp_to_init(amps, self.std_galah, init_rv)
             # fit and turn results into consistent format
-            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=[*init,1])
             std_li = res[1]
             rv = res[2]
+            const = res[3]
             amps = [0,0,0,0,0]
         else:
             fitter = FitBFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu)
@@ -145,12 +146,13 @@ class FitSpec:
             init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'])[:-2] # remove std and rv, fixed
             init = [min(max(init[0], self.min_ew), self.max_ew), self.broad_fit['std'], *init[1:]] # reformat
             # fit and turn results into consistent format
-            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=[*init,1])
             std_li = res[1]
             rv = self.broad_fit['rv']
-            amps = res[2:]
+            amps = res[2:-1]
+            const = res[-1]
         # save Li fit
-        self.li_fit = {'amps':[res[0], *amps], 'std':std_li, 'rv':rv, 'minchisq':minchisq}
+        self.li_fit = {'amps':[res[0], *amps], 'std':std_li, 'rv':rv, 'const':const, 'minchisq':minchisq}
         self.mode = 'Breidablik'
     
     def fit_gaussian(self, spectra, center=np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.961])):
@@ -167,7 +169,7 @@ class FitSpec:
 
         if self.metal_poor:
             # if metal poor, no CN, because otherwise it's uncontrained again
-            fitter = FitG(center=[self.li_center], stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
+            fitter = FitG(stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
             # use cross correlated initial rv
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
             init = amp_to_init(amps, self.std_galah, 0)
@@ -176,9 +178,10 @@ class FitSpec:
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], [self.li_center], rv=init_rv)
             init = amp_to_init(amps, self.std_galah, init_rv)
             # fit and turn results into consistent format
-            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=[*init, 1])
             std_li = res[1]
             rv = res[2]
+            const = res[3]
             amps = [0,0,0,0,0]
         else:
             fitter = FitGFixed(self.narrow_center, self.broad_fit['std'], self.broad_fit['rv'])
@@ -186,12 +189,13 @@ class FitSpec:
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'])
             init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'])[:-2] # remove std and rv, fixed
             # fit and turn results into consistent format
-            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=[*init,1])
             std_li = self.broad_fit['std']
             rv = self.broad_fit['rv']
-            amps = res[1:]
+            amps = res[1:-1]
+            const = res[-1]
         # save Li fit
-        self.li_fit = {'amps':[res[0], *amps], 'std':std_li, 'rv':rv, 'minchisq':minchisq}
+        self.li_fit = {'amps':[res[0], *amps], 'const':const, 'std':std_li, 'rv':rv, 'minchisq':minchisq}
         self.mode = 'Gaussian'
 
     def get_err(self, cdelt):
@@ -219,7 +223,7 @@ class FitSpec:
         # fit if not metal-poor (no fit if metal-poor)
         if self.broad_fit is not None:
             plt.title(f'{self.sid} {self.broad_fit["std"]:.4f} {self.broad_fit["rv"]:.4f} {self.snr:.2f}')
-            fitter = FitG(center=self.broad_center, stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
+            fitter = FitBroad(center=self.broad_center, stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
             fitter.model(spectra['wave_norm'], [*self.broad_fit['amps'], self.broad_fit['std'], self.broad_fit['rv']], plot=True)
         
         plt.xlim(6695, 6719)
@@ -238,7 +242,7 @@ class FitSpec:
         '''
        
         # observation
-        plt.errorbar(spectra['wave_norm'], spectra['sob_norm'], yerr=spectra['uob_norm'], label='observed', color='black', alpha=0.5)
+        plt.errorbar(spectra['wave_norm'], spectra['sob_norm'] * self.li_fit['const'], yerr=spectra['uob_norm'], label='observed', color='black', alpha=0.5)
         plt.title(f'{self.li_fit["amps"][0]:.4f} {self.li_fit["amps"][1]:.4f} {self.li_fit["std"]:.1f} {self.delta_ew:.4f}')
         
         # metal-poor stars
@@ -248,11 +252,11 @@ class FitSpec:
         # Breidablik
         if self.mode == 'Breidablik':
             fitter = FitBFixed(center=self.narrow_center[1:], std=self.broad_fit['std'], rv=self.broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, max_ew=self.max_ew, min_ew=self.min_ew)
-            fitter.model(spectra['wave_norm'], [self.li_fit['amps'][0], self.li_fit['std'], *self.li_fit['amps'][1:]], plot=True, plot_all=True)
+            fitter.model(spectra['wave_norm'], [self.li_fit['amps'][0], self.li_fit['std'], *self.li_fit['amps'][1:], self.li_fit['const']], plot=True, plot_all=True)
         # Gaussian
         elif self.mode == 'Gaussian':
             fitter = FitGFixed(center=self.narrow_center, std=self.li_fit['std'], rv=self.li_fit['rv'])
-            fitter.model(spectra['wave_norm'], self.li_fit['amps'], plot=True, plot_all=True)
+            fitter.model(spectra['wave_norm'], [*self.li_fit['amps'], self.li_fit['const']], plot=True, plot_all=True)
         
         #TODO: plot errors
         if self.metal_poor:

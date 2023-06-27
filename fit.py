@@ -118,6 +118,399 @@ def chisq(wl_obs, flux_obs, flux_err, model, params, bounds, wl_left=None, wl_ri
 
 class FitG:
     '''Fits std and rv simultaneously and a EW for each center given. 
+    For Li only when sp is nan.
+    '''
+
+    def __init__(self, stdl=None, stdu=None, rv_lim=None):
+        '''Optional parameters are not needed if only using the model and not fitting. 
+        
+        Parameters
+        ----------
+        stdl : float, optional
+            The lower limit on std, this is 0.09 \AA for this project.
+        stdu : float, optional
+            The upper limit on std in \AA, this is based on the broadening for GALAH (roughly R=22000)
+        rv_lim : float, optional
+            The limit on rv, mirrored limit on either side, it is the same limit as stdu, except in km/s. 
+        '''
+
+        # don't need if using model
+        self.stdl = stdl
+        self.stdu = stdu
+        self.rv_lim = rv_lim
+
+    def fit(self, wl_obs, flux_obs, flux_err, init):
+        '''Fit std and rv of observed spectrum.
+        
+        Parameters
+        ----------
+        wl_obs : 1darray
+            observed wavelengths
+        flux_obs : 1darray
+            observed flux
+        flux_err : 1darray
+            observed flux error
+        init : list
+            The initial EW and std, rv; in that order. 
+
+        Returns
+        -------
+        fit, minchisq : 1darray, float
+            Fitted parameters: *EW, std, rv, const; minimum chisq value at best fit.
+        '''
+        
+        # metal poor star
+        if init is None:
+            return None, None
+
+        # construct bounds
+        bounds = [(0, np.inf) for _ in range(len(init)-2)] # positive finite EW
+        bounds.append((self.stdl, self.stdu)) # given in init
+        bounds.append((-self.rv_lim, self.rv_lim)) # given in init
+        bounds.append((0.5, 1.5)) # continuum normalisation constant
+        
+        # fit
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[-2]/_c)-x[-3], wl_right=6708.961*(1+x[-2]/_c)+x[-3])
+        res = minimize(func, init, method='Nelder-Mead')
+        fit = res.x
+
+        return res.x, res.fun
+
+    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
+        '''Multiplying Gaussians together with a common std and rv. 
+
+        wl_obs : np.array
+            observed wavelengths
+        params : np.array
+            Parameters to the model: *EWs, std, rv
+        plot : bool
+            If True, turns on plotting.
+        ax : matplotlib.axes, optional
+            The axis to plot on, if None, then it's the default one. 
+        plot_all : bool
+            If True, plot each gaussian. Or else plot only final model.
+
+        Returns
+        -------
+        y : 1darray
+            The model evaluated at given parameters. All gaussians multiplied together.
+        '''
+        
+        *ews, std, offset, const = params
+
+        y = line(wl_obs, a, std, offset, center=6707.814, plot=plot_all, ax=ax)
+        
+        # plot
+        if plot:
+            if ax is None:
+                ax = plt
+            ax.plot(wl_obs, y, label='fit')
+        
+        y /= const
+       
+        return y
+
+
+class FitGFixed:
+    '''Fits EW for each center given. std and rv are fixed from broad region.
+    For when Breidablik fails with nan sp.
+    '''
+
+    def __init__(self, center, std, rv):
+        '''Optional parameters are not needed if only using the model and not fitting. 
+        
+        Parameters
+        ----------
+        center : 1darray
+            The line centers to be fitted. This should be np.array([6707.814, 6706.730, 6707.433, 6707.545, 6708.096, 6708.961])
+        std : float
+            The std found from the broad region.
+        rv : float
+            The rv found from the broad region.
+        '''
+
+        self.center = center
+        self.std = std
+        self.rv = rv
+
+    def fit(self, wl_obs, flux_obs, flux_err, init):
+        '''Fit std and rv of observed spectrum.
+        
+        Parameters
+        ----------
+        wl_obs : 1darray
+            observed wavelengths
+        flux_obs : 1darray
+            observed flux
+        flux_err : 1darray
+            observed flux error
+        init : list
+            The initial EW; in the order of centers. 
+
+        Returns
+        -------
+        fit, minchisq : 1darray, float
+            Fitted parameters: *EW, const; minimum chisq value at best fit.
+        '''
+
+        # construct bounds
+        bounds = [(0, np.inf) for _ in range(len(init))] # positive finite EW
+        bounds.append((0.5, 1.5)) # continuum normalisation constant
+        
+        # fit
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std, wl_right=6708.961*(1+self.rv/_c)+self.std)
+        res = minimize(func, init, method='Nelder-Mead')
+        fit = res.x
+
+        return res.x, res.fun
+
+    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
+        '''Multiplying Gaussians together with a common std and rv. 
+
+        wl_obs : np.array
+            observed wavelengths
+        params : np.array
+            Parameters to the model: *EWs, std, rv
+        plot : bool
+            If True, turns on plotting.
+        ax : matplotlib.axes, optional
+            The axis to plot on, if None, then it's the default one. 
+        plot_all : bool
+            If True, plot each gaussian. Or else plot only final model.
+
+        Returns
+        -------
+        y : 1darray
+            The model evaluated at given parameters. All gaussians multiplied together.
+        '''
+        
+        *ews, const = params
+        y = np.ones(len(wl_obs))
+        
+        for a, c in zip(ews, self.center):
+            y1 = line(wl_obs, a, self.std, self.rv, center=c, plot=plot_all, ax=ax)
+            y *= y1
+       
+        # plot
+        if plot:
+            if ax is None:
+                ax = plt
+            ax.plot(wl_obs, y, label='fit')
+        
+        y /= const
+
+        return y
+
+
+class FitB:
+    '''Fits Li EW, std, and rv simultaneously. 
+    For metal-poor stars
+    '''
+
+    def __init__(self, teff, logg, feh, rew_to_abund, max_ew, min_ew, stdu=None, rv_lim=None):
+        '''Optional parameters are not needed if only using the model and not fitting.
+        
+        Parameters
+        ----------
+        teff : float
+            Used in breidablik, teff of star
+        logg : float
+            Used in breidablik, logg of star 
+        feh : float
+            Used in breidablik, feh of star 
+        rew_to_abund : object
+            Converting REW to A(Li), used in Breidablik since the input there is A(Li), but the input to this function is EW
+        max_ew : float, optional
+            The maximum ew that the line can have, limit based on rew_to_abund
+        min_ew : float, optional 
+            The minimum ew that the line can have, limit based on rew_to_abund
+        stdu : float, optional
+            The upper limit on std in \AA, this is based on the broadening for GALAH (roughly R=22000)
+        rv_lim : float, optional
+            The limit on rv, mirrored limit on either side, it is the same limit as stdu, except in km/s. 
+        '''
+
+        self.teff = teff
+        self.logg = logg
+        self.feh = feh
+        self.rew_to_abund = rew_to_abund
+        # don't need if using model
+        self.max_ew = max_ew
+        self.min_ew = min_ew
+        self.stdu = stdu
+        self.rv_lim = rv_lim
+
+    def fit(self, wl_obs, flux_obs, flux_err, init):
+        '''Fit Li EW, Li std, and rv of observed spectrum.
+
+        Parameters
+        ----------
+        wl_obs : np.array
+            observed wavelengths
+        flux_obs : np.array
+            observed flux
+        flux_err : np.array
+            observed flux error
+        init : list
+            The initial EW, std, and rv; in that order. 
+        
+        Returns
+        -------
+        fit, minchisq : 1darray, float
+            Fitted parameters: *EW, std, rv, const; minimum chisq value at best fit.
+        '''
+        
+        # construct bounds
+        bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
+                (5e-4, self.stdu), # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s 
+                (-self.rv_lim, self.rv_lim), # based on stdu, except in km/s
+                (0.5, 1.5)] # continuum normalisation constant
+
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[2]/_c)-x[1], wl_right=6708.961*(1+x[2]/_c)+x[1])
+        res = minimize(func, init, method='Nelder-Mead')
+
+        return res.x, res.fun
+
+    def model(self, wl_obs, params, plot=False, ax=None):
+        '''Breidablike ilne profile, with Gaussian broadening and rv shift.
+
+        wl_obs : np.array
+            observed wavelengths
+        params : np.array
+            Parameters to be fitted, Li EW, Li std, and rv.
+        plot : bool
+            If True, turns on plotting.
+        ax : matplotlib.axes, optional
+            The axis to plot on, if None, then it's the default one. 
+        
+        Returns
+        -------
+        y : 1darray
+            The model evaluated at given parameters. Breidablik line profile.
+        '''
+    
+        ews, std, offset, const = params
+        y = line(wl_obs, ews, std, offset, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, plot=plot, ax=ax)
+        
+        y /= const
+
+        return y
+
+
+class FitBFixed:
+    '''Fits Li EW, Li std, other ews simltaneously based on the centers given. std and rv are fixed from broad region.
+    For non-metal-poor stars
+    '''
+    
+    def __init__(self, center, std, rv, teff, logg, feh, rew_to_abund, max_ew, min_ew, stdu=None):
+        '''Optional parameters are not needed if only using the model and not fitting.
+        
+        Parameters
+        ----------
+        center : float
+            The center that the blended lines (no Li) is at. The Li line center is already given by Breidablik. Input for this project should be np.array([6706.730, 6707.433, 6707.545, 6708.096, 6708.961])
+        std : float
+            The std found from the broad region, used for Gaussians (non-Li lines).
+        rv : float
+             The rv found from the broad region, used for the whole model.
+        teff : float
+            Used in breidablik, teff of star
+        logg : float
+            Used in breidablik, logg of star 
+        feh : float
+            Used in breidablik, feh of star 
+        rew_to_abund : object
+            Converting REW to A(Li), used in Breidablik since the input there is A(Li), but the input to this function is EW
+        max_ew : float, optional
+            The maximum ew that the line can have, limit based on rew_to_abund
+        min_ew : float, optional 
+            The minimum ew that the line can have, limit based on rew_to_abund
+        stdu : float, optional
+            The upper limit on std in \AA, this is based on the broadening for GALAH (roughly R=22000)
+        '''
+        
+        self.center = center
+        self.std = std
+        self.rv = rv
+        self.teff = teff
+        self.logg = logg
+        self.feh = feh
+        self.rew_to_abund = rew_to_abund
+        # don't need if using model
+        self.max_ew = max_ew
+        self.min_ew = min_ew
+        self.stdu = stdu
+
+    def fit(self, wl_obs, flux_obs, flux_err, init):
+        '''Fit ews of observed spectrum.
+
+        Parameters
+        ----------
+        wl_obs : np.array
+            observed wavelengths
+        flux_obs : np.array
+            observed flux
+        flux_err : np.array
+            observed flux error
+        init : list
+            The initial Li EW, Li std, other ews, in order of centers. 
+        
+        Returns
+        -------
+        fit, minchisq : 1darray, float
+            Fitted parameters: Li EW, Li std, *ews, const; minimum chisq value at best fit.
+        '''
+
+        bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
+                (5e-4, self.stdu)] # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s
+        bounds.extend([(0, np.inf) for _ in range(len(init)-2)]) # positive finite EW
+        bounds.append((0.5, 1.5)) # continuum normalisation constant
+
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std, wl_right=6708.961*(1+self.rv/_c)+self.std)
+        res = minimize(func, init, method='Nelder-Mead')
+
+        return res.x, res.fun
+
+    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
+        '''Gaussians multiplied together with Breidablik line profile.
+
+        wl_obs : np.array
+            observed wavelengths
+        params : np.array
+            Parameters to be fitted, Li EW, Li std, and rv.
+        plot : bool
+            If True, turns on plotting.
+        ax : matplotlib.axes, optional
+            The axis to plot on, if None, then it's the default one. 
+        plot_all : bool
+            If True, plot each gaussian. Or else plot only final model.
+        
+        Returns
+        -------
+        y : 1darray
+            The model evaluated at given parameters. Gaussians multiplied with Breidablik line profile.
+        '''
+
+        ali, std_li, *ews, const = params
+        y = line(wl_obs, ali, std_li, self.rv, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, plot=plot, ax=ax) 
+        
+        for a, c in zip(ews, self.center):
+            y1 = line(wl_obs, a, self.std, self.rv, center=c, plot=plot_all, ax=ax)
+            y *= y1
+        
+        # plot
+        if plot:
+            if ax is None:
+                ax = plt
+            ax.plot(wl_obs, y, label='fit')
+        
+        y /= const
+        
+        return y
+
+
+class FitBroad:
+    '''Fits std and rv simultaneously and a EW for each center given. 
     For broad region.
     '''
 
@@ -214,295 +607,6 @@ class FitG:
         return y
 
 
-class FitGFixed:
-    '''Fits EW for each center given. std and rv are fixed from broad region.
-    For when Breidablik fails with nan sp.
-    '''
-
-    def __init__(self, center, std, rv):
-        '''Optional parameters are not needed if only using the model and not fitting. 
-        
-        Parameters
-        ----------
-        center : 1darray
-            The line centers to be fitted. This should be np.array([6707.814, 6706.730, 6707.433, 6707.545, 6708.096, 6708.961])
-        std : float
-            The std found from the broad region.
-        rv : float
-            The rv found from the broad region.
-        '''
-
-        self.center = center
-        self.std = std
-        self.rv = rv
-
-    def fit(self, wl_obs, flux_obs, flux_err, init):
-        '''Fit std and rv of observed spectrum.
-        
-        Parameters
-        ----------
-        wl_obs : 1darray
-            observed wavelengths
-        flux_obs : 1darray
-            observed flux
-        flux_err : 1darray
-            observed flux error
-        init : list
-            The initial EW; in the order of centers. 
-
-        Returns
-        -------
-        fit, minchisq : 1darray, float
-            Fitted parameters: *EW; minimum chisq value at best fit.
-        '''
-
-        # construct bounds
-        bounds = [(0, np.inf) for _ in range(len(init))] # positive finite EW
-        
-        # fit
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std, wl_right=6708.961*(1+self.rv/_c)+self.std)
-        res = minimize(func, init, method='Nelder-Mead')
-        fit = res.x
-
-        return res.x, res.fun
-
-    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
-        '''Multiplying Gaussians together with a common std and rv. 
-
-        wl_obs : np.array
-            observed wavelengths
-        params : np.array
-            Parameters to the model: *EWs, std, rv
-        plot : bool
-            If True, turns on plotting.
-        ax : matplotlib.axes, optional
-            The axis to plot on, if None, then it's the default one. 
-        plot_all : bool
-            If True, plot each gaussian. Or else plot only final model.
-
-        Returns
-        -------
-        y : 1darray
-            The model evaluated at given parameters. All gaussians multiplied together.
-        '''
-        
-        ews = params
-        y = np.ones(len(wl_obs))
-        
-        for a, c in zip(ews, self.center):
-            y1 = line(wl_obs, a, self.std, self.rv, center=c, plot=plot_all, ax=ax)
-            y *= y1
-        
-        # plot
-        if plot:
-            if ax is None:
-                ax = plt
-            ax.plot(wl_obs, y, label='fit')
-        
-        return y
-
-
-class FitB:
-    '''Fits Li EW, std, and rv simultaneously. 
-    For metal-poor stars
-    '''
-
-    def __init__(self, teff, logg, feh, rew_to_abund, max_ew, min_ew, stdu=None, rv_lim=None):
-        '''Optional parameters are not needed if only using the model and not fitting.
-        
-        Parameters
-        ----------
-        teff : float
-            Used in breidablik, teff of star
-        logg : float
-            Used in breidablik, logg of star 
-        feh : float
-            Used in breidablik, feh of star 
-        rew_to_abund : object
-            Converting REW to A(Li), used in Breidablik since the input there is A(Li), but the input to this function is EW
-        max_ew : float, optional
-            The maximum ew that the line can have, limit based on rew_to_abund
-        min_ew : float, optional 
-            The minimum ew that the line can have, limit based on rew_to_abund
-        stdu : float, optional
-            The upper limit on std in \AA, this is based on the broadening for GALAH (roughly R=22000)
-        rv_lim : float, optional
-            The limit on rv, mirrored limit on either side, it is the same limit as stdu, except in km/s. 
-        '''
-
-        self.teff = teff
-        self.logg = logg
-        self.feh = feh
-        self.rew_to_abund = rew_to_abund
-        # don't need if using model
-        self.max_ew = max_ew
-        self.min_ew = min_ew
-        self.stdu = stdu
-        self.rv_lim = rv_lim
-
-    def fit(self, wl_obs, flux_obs, flux_err, init):
-        '''Fit Li EW, Li std, and rv of observed spectrum.
-
-        Parameters
-        ----------
-        wl_obs : np.array
-            observed wavelengths
-        flux_obs : np.array
-            observed flux
-        flux_err : np.array
-            observed flux error
-        init : list
-            The initial EW, std, and rv; in that order. 
-        
-        Returns
-        -------
-        fit, minchisq : 1darray, float
-            Fitted parameters: *EW, std, rv; minimum chisq value at best fit.
-        '''
-        
-        # construct bounds
-        bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
-                (5e-4, self.stdu), # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s 
-                (-self.rv_lim, self.rv_lim)] # based on stdu, except in km/s
-       
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[-1]/_c)-x[1], wl_right=6708.961*(1+x[-1]/_c)+x[1])
-        res = minimize(func, init, method='Nelder-Mead')
-
-        return res.x, res.fun
-
-    def model(self, wl_obs, params, plot=False, ax=None):
-        '''Breidablike ilne profile, with Gaussian broadening and rv shift.
-
-        wl_obs : np.array
-            observed wavelengths
-        params : np.array
-            Parameters to be fitted, Li EW, Li std, and rv.
-        plot : bool
-            If True, turns on plotting.
-        ax : matplotlib.axes, optional
-            The axis to plot on, if None, then it's the default one. 
-        
-        Returns
-        -------
-        y : 1darray
-            The model evaluated at given parameters. Breidablik line profile.
-        '''
-    
-        ews, std, offset = params
-        y = line(wl_obs, ews, std, offset, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, plot=plot, ax=ax)
-        
-        return y
-
-
-class FitBFixed:
-    '''Fits Li EW, Li std, other ews simltaneously based on the centers given. std and rv are fixed from broad region.
-    For non-metal-poor stars
-    '''
-    
-    def __init__(self, center, std, rv, teff, logg, feh, rew_to_abund, max_ew, min_ew, stdu=None):
-        '''Optional parameters are not needed if only using the model and not fitting.
-        
-        Parameters
-        ----------
-        center : float
-            The center that the blended lines (no Li) is at. The Li line center is already given by Breidablik. Input for this project should be np.array([6706.730, 6707.433, 6707.545, 6708.096, 6708.961])
-        std : float
-            The std found from the broad region, used for Gaussians (non-Li lines).
-        rv : float
-             The rv found from the broad region, used for the whole model.
-        teff : float
-            Used in breidablik, teff of star
-        logg : float
-            Used in breidablik, logg of star 
-        feh : float
-            Used in breidablik, feh of star 
-        rew_to_abund : object
-            Converting REW to A(Li), used in Breidablik since the input there is A(Li), but the input to this function is EW
-        max_ew : float, optional
-            The maximum ew that the line can have, limit based on rew_to_abund
-        min_ew : float, optional 
-            The minimum ew that the line can have, limit based on rew_to_abund
-        stdu : float, optional
-            The upper limit on std in \AA, this is based on the broadening for GALAH (roughly R=22000)
-        '''
-        
-        self.center = center
-        self.std = std
-        self.rv = rv
-        self.teff = teff
-        self.logg = logg
-        self.feh = feh
-        self.rew_to_abund = rew_to_abund
-        # don't need if using model
-        self.max_ew = max_ew
-        self.min_ew = min_ew
-        self.stdu = stdu
-
-    def fit(self, wl_obs, flux_obs, flux_err, init):
-        '''Fit ews of observed spectrum.
-
-        Parameters
-        ----------
-        wl_obs : np.array
-            observed wavelengths
-        flux_obs : np.array
-            observed flux
-        flux_err : np.array
-            observed flux error
-        init : list
-            The initial Li EW, Li std, other ews, in order of centers. 
-        
-        Returns
-        -------
-        fit, minchisq : 1darray, float
-            Fitted parameters: Li EW, Li std, *ews; minimum chisq value at best fit.
-        '''
-
-        bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
-                (5e-4, self.stdu)] # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s
-        bounds.extend([(0, np.inf) for _ in range(len(init)-2)]) # positive finite EW
-
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std, wl_right=6708.961*(1+self.rv/_c)+self.std)
-        res = minimize(func, init, method='Nelder-Mead')
-
-        return res.x, res.fun
-
-    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
-        '''Gaussians multiplied together with Breidablik line profile.
-
-        wl_obs : np.array
-            observed wavelengths
-        params : np.array
-            Parameters to be fitted, Li EW, Li std, and rv.
-        plot : bool
-            If True, turns on plotting.
-        ax : matplotlib.axes, optional
-            The axis to plot on, if None, then it's the default one. 
-        plot_all : bool
-            If True, plot each gaussian. Or else plot only final model.
-        
-        Returns
-        -------
-        y : 1darray
-            The model evaluated at given parameters. Gaussians multiplied with Breidablik line profile.
-        '''
-
-        ali, std_li, *ews = params
-        y = line(wl_obs, ali, std_li, self.rv, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, plot=plot, ax=ax) 
-        
-        for a, c in zip(ews, self.center):
-            y1 = line(wl_obs, a, self.std, self.rv, center=c, plot=plot_all, ax=ax)
-            y *= y1
-        
-        # plot
-        if plot:
-            if ax is None:
-                ax = plt
-            ax.plot(wl_obs, y, label='fit')
-        
-        return y
-
-
 def pred_amp(wl_obs, flux_obs, flux_err, centers, rv=0):
     '''Get the amplitudes for the initial guess. 
 
@@ -576,7 +680,7 @@ def cross_correlate(wl, flux, centers, params, rv):
         The cross correlation between the observed spectrum and the model spectrum
     '''
     
-    fit_all = FitG(center=centers)
+    fit_all = FitBroad(center=centers)
     template = fit_all.model(wl, [*params, rv])
     cc = np.sum(template*flux)
     return cc
@@ -693,7 +797,7 @@ def iter_fit(wl, flux, flux_err, center, stdl, stdu, std_init, rv_lim):
     '''
 
     # get initial rv
-    fitter = FitG(center=center, stdl=stdl, stdu=stdu, rv_lim=rv_lim)
+    fitter = FitBroad(center=center, stdl=stdl, stdu=stdu, rv_lim=rv_lim)
     amps, _ = pred_amp(wl, flux, flux_err, center)
     res = amp_to_init(amps, std_init, 0)
     init_rv = cc_rv(wl, flux, center, res[:-1], res[-1], rv_lim)
