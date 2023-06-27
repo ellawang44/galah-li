@@ -51,8 +51,8 @@ def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, fe
         The spectral line, flux, at the input x wavelengths.
     '''
 
+    lambda0 = 6707.814*(1+rv/299792.458) # line center is shifted
     if breidablik: # breidablik line profile
-        lambda0 = 6707.814*(1+rv/299792.458) # line center is shifted
         ali = rew_to_abund(np.log10(ew/lambda0)) # convert EW to REW
         flux = _spectra._predict_flux(teff, logg, feh, [ali])[0] # this won't produce warnings anymore
         # rv shift
@@ -71,11 +71,13 @@ def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, fe
             plt.plot(x, y, label='Li')
         else:
             plt.plot(x, y)
+        plt.axvline(lambda0, linestyle='--')
 
     return y
 
 def chisq(wl_obs, flux_obs, flux_err, model, params, bounds, wl_left=None, wl_right=None):
-    '''Calculate the chisq with bounds. If value is out of bounds, then chisq is inf. Note parameter and bounds need to have same ordering.
+    '''Calculate the chisq with bounds. If value is out of bounds, then chisq is inf. Note parameter and bounds need to have same ordering. 
+    wl_left and wl_right need to be both given, or else ignored, it is the region in which to compute the chisq value. Needed for continuum normalisation constant, set to the extreme narrow region centers +- std, including metal-poor stars for consistency. 
     
     Parameters
     ----------
@@ -92,9 +94,9 @@ def chisq(wl_obs, flux_obs, flux_err, model, params, bounds, wl_left=None, wl_ri
     bounds : 1darray
         Bounds for the parameters
     wl_left : float, optional
-        Left wl bound to compute chisq over. Ignored if wl_right is None.
+        Left wl bound to compute chisq over. 
     wl_right : float, optional
-        Right wl bound to compute chisq over. Ignored if wl_left is None.
+        Right wl bound to compute chisq over. 
 
     Returns
     -------
@@ -246,19 +248,19 @@ class FitGFixed:
         flux_err : 1darray
             observed flux error
         init : list
-            The initial EW and std, rv; in that order. 
+            The initial EW; in the order of centers. 
 
         Returns
         -------
         fit, minchisq : 1darray, float
-            Fitted parameters: *EW, std, rv; minimum chisq value at best fit.
+            Fitted parameters: *EW; minimum chisq value at best fit.
         '''
 
         # construct bounds
-        bounds = [(0, np.inf) for _ in range(len(init)-2)] # positive finite EW
+        bounds = [(0, np.inf) for _ in range(len(init))] # positive finite EW
         
         # fit
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=self.center[0]*(1+self.rv/_c)-self.std, wl_right=self.center[-1]*(1+self.rv/_c)+self.std)
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std, wl_right=6708.961*(1+self.rv/_c)+self.std)
         res = minimize(func, init, method='Nelder-Mead')
         fit = res.x
 
@@ -363,7 +365,7 @@ class FitB:
                 (5e-4, self.stdu), # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s 
                 (-self.rv_lim, self.rv_lim)] # based on stdu, except in km/s
        
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds)
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[-1]/_c)-x[1], wl_right=6708.961*(1+x[-1]/_c)+x[1])
         res = minimize(func, init, method='Nelder-Mead')
 
         return res.x, res.fun
@@ -459,8 +461,8 @@ class FitBFixed:
         bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
                 (5e-4, self.stdu)] # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s
         bounds.extend([(0, np.inf) for _ in range(len(init)-2)]) # positive finite EW
-      
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=self.center[0]*(1+self.rv/_c)-self.std, wl_right=self.center[-1]*(1+self.rv/_c)+self.std)
+
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std, wl_right=6708.961*(1+self.rv/_c)+self.std)
         res = minimize(func, init, method='Nelder-Mead')
 
         return res.x, res.fun
