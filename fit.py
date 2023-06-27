@@ -121,7 +121,7 @@ class FitG:
     For Li only when sp is nan.
     '''
 
-    def __init__(self, stdl=None, stdu=None, rv_lim=None):
+    def __init__(self, stdl=None, stdu=None, rv_lim=None, std_galah=None):
         '''Optional parameters are not needed if only using the model and not fitting. 
         
         Parameters
@@ -132,12 +132,15 @@ class FitG:
             The upper limit on std in \AA, this is based on the broadening for GALAH (roughly R=22000)
         rv_lim : float, optional
             The limit on rv, mirrored limit on either side, it is the same limit as stdu, except in km/s. 
+        std_galah : float, optional
+            Used for the chisq region. rotational broadening + instrumental broadening (in quadrature). Units: \AA  
         '''
 
         # don't need if using model
         self.stdl = stdl
         self.stdu = stdu
         self.rv_lim = rv_lim
+        self.std_galah = std_galah
 
     def fit(self, wl_obs, flux_obs, flux_err, init):
         '''Fit std and rv of observed spectrum.
@@ -170,7 +173,7 @@ class FitG:
         bounds.append((0.5, 1.5)) # continuum normalisation constant
         
         # fit
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[-2]/_c)-x[-3], wl_right=6708.961*(1+x[-2]/_c)+x[-3])
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[-2]/_c)-self.std_galah*2, wl_right=6708.961*(1+x[-2]/_c)+self.std_galah*2)
         res = minimize(func, init, method='Nelder-Mead')
         fit = res.x
 
@@ -258,7 +261,7 @@ class FitGFixed:
         bounds.append((0.5, 1.5)) # continuum normalisation constant
         
         # fit
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std, wl_right=6708.961*(1+self.rv/_c)+self.std)
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std*2, wl_right=6708.961*(1+self.rv/_c)+self.std*2)
         res = minimize(func, init, method='Nelder-Mead')
         fit = res.x
 
@@ -307,7 +310,7 @@ class FitB:
     For metal-poor stars
     '''
 
-    def __init__(self, teff, logg, feh, rew_to_abund, max_ew, min_ew, stdu=None, rv_lim=None):
+    def __init__(self, teff, logg, feh, rew_to_abund, max_ew, min_ew, stdu=None, rv_lim=None, std_galah=None):
         '''Optional parameters are not needed if only using the model and not fitting.
         
         Parameters
@@ -328,6 +331,8 @@ class FitB:
             The upper limit on std in \AA, this is based on the broadening for GALAH (roughly R=22000)
         rv_lim : float, optional
             The limit on rv, mirrored limit on either side, it is the same limit as stdu, except in km/s. 
+        std_galah : float, optional
+            Used for the chisq region. rotational broadening + instrumental broadening (in quadrature). Units: \AA
         '''
 
         self.teff = teff
@@ -339,6 +344,7 @@ class FitB:
         self.min_ew = min_ew
         self.stdu = stdu
         self.rv_lim = rv_lim
+        self.std_galah = std_galah
 
     def fit(self, wl_obs, flux_obs, flux_err, init):
         '''Fit Li EW, Li std, and rv of observed spectrum.
@@ -366,7 +372,7 @@ class FitB:
                 (-self.rv_lim, self.rv_lim), # based on stdu, except in km/s
                 (0.5, 1.5)] # continuum normalisation constant
 
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[2]/_c)-x[1], wl_right=6708.961*(1+x[2]/_c)+x[1])
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[2]/_c)-self.std_galah*2, wl_right=6708.961*(1+x[2]/_c)+self.std_galah*2)
         res = minimize(func, init, method='Nelder-Mead')
 
         return res.x, res.fun
@@ -466,7 +472,7 @@ class FitBFixed:
         bounds.extend([(0, np.inf) for _ in range(len(init)-2)]) # positive finite EW
         bounds.append((0.5, 1.5)) # continuum normalisation constant
 
-        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std, wl_right=6708.961*(1+self.rv/_c)+self.std)
+        func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std*2, wl_right=6708.961*(1+self.rv/_c)+self.std*2)
         res = minimize(func, init, method='Nelder-Mead')
 
         return res.x, res.fun

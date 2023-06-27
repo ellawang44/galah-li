@@ -125,7 +125,7 @@ class FitSpec:
         #TODO: has a tendency to fit poorly on broad spectra, need to modify initial conditions
         if self.metal_poor:
             # if metal poor, no CN, because otherwise it's uncontrained again
-            fitter = FitB(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim)
+            fitter = FitB(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
             # use cross correlated initial rv
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
             init = amp_to_init(amps, self.std_galah, 0)
@@ -169,7 +169,7 @@ class FitSpec:
 
         if self.metal_poor:
             # if metal poor, no CN, because otherwise it's uncontrained again
-            fitter = FitG(stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim)
+            fitter = FitG(stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
             # use cross correlated initial rv
             amps, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
             init = amp_to_init(amps, self.std_galah, 0)
@@ -259,13 +259,14 @@ class FitSpec:
             fitter.model(spectra['wave_norm'], [*self.li_fit['amps'], self.li_fit['const']], plot=True, plot_all=True)
         
         #TODO: plot errors
+        # show chisq region
         if self.metal_poor:
-            li_shifted = self.li_center*(1+self.broad_fit['rv']/self.c)
-            plt.axvline(li_shifted-self.broad_fit['std']*3)
-            plt.axvline(li_shifted+self.broad_fit['std']*3)
+            std = self.std_galah
         else:
-            plt.axvline(self.narrow_center[1]*(1+self.broad_fit['rv']/self.c)-self.broad_fit['std'])
-            plt.axvline(self.narrow_center[-1]*(1+self.broad_fit['rv']/self.c)+self.broad_fit['std'])
+            std = self.broad_fit['std']
+        plt.axvline(self.narrow_center[1]*(1+self.broad_fit['rv']/self.c)-std*2)
+        plt.axvline(self.narrow_center[-1]*(1+self.broad_fit['rv']/self.c)+std*2)
+        
         plt.legend()
         plt.xlabel(r'wavelengths ($\AA$)')
         plt.ylabel('normalised flux')
