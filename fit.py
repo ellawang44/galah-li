@@ -68,10 +68,10 @@ def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, fe
         if ax is None: # set axes
             ax = plt
         if breidablik:
-            plt.plot(x, y, label='Li')
+            ax.plot(x, y, label='Li')
         else:
-            plt.plot(x, y)
-        plt.axvline(lambda0, linestyle='--')
+            ax.plot(x, y)
+        ax.axvline(lambda0, linestyle='--')
 
     return y
 
@@ -162,12 +162,8 @@ class FitG:
             Fitted parameters: *EW, std, rv, const; minimum chisq value at best fit.
         '''
         
-        # metal poor star
-        if init is None:
-            return None, None
-
         # construct bounds
-        bounds = [(0, np.inf) for _ in range(len(init)-2)] # positive finite EW
+        bounds = [(0, np.inf)] # positive finite EW
         bounds.append((self.stdl, self.stdu)) # given in init
         bounds.append((-self.rv_lim, self.rv_lim)) # given in init
         bounds.append((0.5, 1.5)) # continuum normalisation constant
@@ -199,9 +195,9 @@ class FitG:
             The model evaluated at given parameters. All gaussians multiplied together.
         '''
         
-        *ews, std, offset, const = params
+        ew, std, offset, const = params
 
-        y = line(wl_obs, a, std, offset, center=6707.814, plot=plot_all, ax=ax)
+        y = line(wl_obs, ew, std, offset, center=6707.814, plot=plot_all, ax=ax)
         
         # plot
         if plot:
@@ -377,7 +373,7 @@ class FitB:
 
         return res.x, res.fun
 
-    def model(self, wl_obs, params, plot=False, ax=None):
+    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
         '''Breidablike ilne profile, with Gaussian broadening and rv shift.
 
         wl_obs : np.array
@@ -388,6 +384,8 @@ class FitB:
             If True, turns on plotting.
         ax : matplotlib.axes, optional
             The axis to plot on, if None, then it's the default one. 
+        plot_all : bool
+            This isn't used, it's just there to be consistent with the other classes.
         
         Returns
         -------

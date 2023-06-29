@@ -6,6 +6,8 @@ from breidablik.analysis import read, tools
 from config import *
 from scipy.interpolate import interp1d, CubicSpline
 from astro_tools import vac_to_air
+from un_fitter import UNFitter
+import corner
 
 class FitSpec:
     '''Fitting 1 spectrum, contains plotting, and save/load. 
@@ -46,9 +48,13 @@ class FitSpec:
         self.feh = feh
         self.li_center = 6707.8139458 # weighted mean of smith98 Li7 line centers
         self.c = 299792.458 # speed of light in km/s
+        if ~np.isnan(teff) and ~np.isnan(logg) and ~np.isnan(feh): # valid sp from galah
+            self.mode = 'Breidablik'
+        else:
+            self.mode = 'Gaussian'
         # make model to translate between rew and abundance
         # can't run breidablik with nans
-        if ~np.isnan(teff) and ~np.isnan(logg) and ~np.isnan(feh):
+        if self.mode == 'Breidablik':
             self.rew_to_abund = self.gen_rew_to_abund()
 
     def gen_rew_to_abund(self):
@@ -118,7 +124,7 @@ class FitSpec:
         # if any sp is nan, then don't do fit, because Breidablik breaks 
         # these stars will be taken out later down the line anyway when EW -> A(Li)
         # so it doesn't really matter what is saved in here
-        if np.isnan([self.teff, self.logg, self.feh]).any():
+        if self.mode == 'Gaussian':
             self.fit_gaussian(spectra)
             return None
 
@@ -153,7 +159,6 @@ class FitSpec:
             const = res[-1]
         # save Li fit
         self.li_fit = {'amps':[res[0], *amps], 'std':std_li, 'rv':rv, 'const':const, 'minchisq':minchisq}
-        self.mode = 'Breidablik'
     
     def fit_gaussian(self, spectra, center=np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.961])):
         '''Fit the Li region of the spectrum, fits ew, std, and rv if metal-poor (less than 3 lines with amplitudes above noise), or else fixes std and rv and only fits ews.
@@ -196,18 +201,82 @@ class FitSpec:
             const = res[-1]
         # save Li fit
         self.li_fit = {'amps':[res[0], *amps], 'const':const, 'std':std_li, 'rv':rv, 'minchisq':minchisq}
-        self.mode = 'Gaussian'
 
     def get_err(self, cdelt):
-        '''error from cayrel formula'''
-        #TODO 
+        '''error from cayrel and norris formula'''
         error_factor = np.sqrt(3*np.pi)/(np.pi**(1/4))
         # metal-poor stars use galah std
         if self.broad_fit is None:
             std = self.std_galah
         else:
             std = self.broad_fit['std']
-        self.delta_ew = error_factor*(1/self.snr)*(std*cdelt)**0.5
+        self.cayrel = error_factor*(1/self.snr)*(std*cdelt)**0.5
+        R = 25500
+        npix = 5
+        self.norris = self.li_center*npix**0.5/(R*self.snr)
+
+    def posterior(self, spectra):
+        '''run ultranest to get posteriors'''
+        # set up variables
+        self.get_err(spectra['CDELT1'])
+        
+        # set up bounds and fitters
+        if self.metal_poor and self.mode == 'Breidablik':
+            fitter = FitB(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
+            opt = [self.li_fit['amps'][0], self.li_fit['std'], self.li_fit['rv'], self.li_fit['const']]
+            bounds = [(max(opt[0]-self.norris*3, self.min_ew), min(opt[0]+self.norris*3, self.max_ew)),
+                    (5e-4, self.stdu),
+                    (-self.rv_lim, self.rv_lim),
+                    (0.5, 1.5)
+                    ]
+        elif not self.metal_poor and self.mode == 'Breidablik':
+            fitter = FitBFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu)
+            opt = [self.li_fit['amps'][0], self.li_fit['std'], *self.li_fit['amps'][1:], self.li_fit['const']]
+            bounds = [(max(opt[0]-self.norris*3, self.min_ew), min(opt[0]+self.norris*3, self.max_ew)),
+                    (5e-4, self.stdu),
+                    (max(0, opt[2]-self.norris*3), opt[2]+self.norris*3),
+                    (max(0, opt[3]-self.norris*3), opt[3]+self.norris*3),
+                    (max(0, opt[4]-self.norris*3), opt[4]+self.norris*3),
+                    (max(0, opt[5]-self.norris*3), opt[5]+self.norris*3),
+                    (max(0, opt[6]-self.norris*3), opt[6]+self.norris*3),
+                    (0.5, 1.5)
+                    ]
+        elif self.metal_poor and self.mode == 'Gaussian':
+            fitter = FitG(stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
+            opt = [self.li_fit['amps'][0], self.li_fit['std'], self.li_fit['rv'], self.li_fit['const']]
+            bounds = [(max(0, opt[0]-self.norris*3), opt[0]+self.norris*3),
+                    (self.stdl, self.stdu),
+                    (-self.rv_lim, self.rv_lim),
+                    (0.5, 1.5)
+                    ]
+        elif not self.metal_poor and self.mode == 'Gaussian':
+            fitter = FitGFixed(self.narrow_center, self.broad_fit['std'], self.broad_fit['rv'])
+            opt = [*self.li_fit['amps'], self.li_fit['const']]
+            bounds = [(max(0, opt[0]-self.norris*3), opt[0]+self.norris*3),
+                    (max(0, opt[1]-self.norris*3), opt[1]+self.norris*3),
+                    (max(0, opt[2]-self.norris*3), opt[2]+self.norris*3),
+                    (max(0, opt[3]-self.norris*3), opt[3]+self.norris*3),
+                    (max(0, opt[4]-self.norris*3), opt[4]+self.norris*3),
+                    (max(0, opt[5]-self.norris*3), opt[5]+self.norris*3),
+                    (0.5, 1.5)
+                    ]
+        #TODO: bounds rely on opt to be good, which may fail in extreme rotating stars
+        #TODO: maybe the fix is to check if opt matches mean from posterior and if not extend the region?
+        #TODO: cont norm is quite a large region, maybe better smaller
+
+        un_fitter = UNFitter(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], fitter, bounds)
+        self.sample = un_fitter.results
+        self.err = np.percentile(self.sample['samples'][:,0], [50-68/2, 50+68/2])
+
+    def get_map(self, bins=100):
+        params = []
+        for i in range(self.sample['samples'].shape[1]):
+            sample = self.sample['samples'][:,i]
+            hist, edges = np.histogram(sample, bins=bins)
+            centers = np.mean([edges[:-1], edges[1:]], axis=0)
+            best = centers[np.argmax(hist)]
+            params.append(best)
+        return np.array(params)
 
     def plot_broad(self, spectra):
         '''Plot the broad region and the fits. Meant to be a convenience function for quickly checking the fits are working
@@ -240,37 +309,111 @@ class FitSpec:
         spectra : dict
             Dictionary containing spectrum, from read (keys: wave_norm, sob_norm, uob_norm) 
         '''
-       
-        # observation
-        plt.errorbar(spectra['wave_norm'], spectra['sob_norm'] * self.li_fit['const'], yerr=spectra['uob_norm'], label='observed', color='black', alpha=0.5)
-        plt.title(f'{self.li_fit["amps"][0]:.4f} {self.li_fit["amps"][1]:.4f} {self.li_fit["std"]:.1f} {self.delta_ew:.4f}')
         
-        # metal-poor stars
-        if self.metal_poor: 
-            self.broad_fit = {'std':self.li_fit['std'], 'rv':self.li_fit['rv']}
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharex=True, sharey=True)
+
+        #un_best = np.mean(self.sample['samples'], axis=0) # mean
+        un_best = self.get_map() # map
+
+        # observation
+        axes[0].errorbar(spectra['wave_norm'], spectra['sob_norm'] * self.li_fit['const'], yerr=spectra['uob_norm'], label='observed', color='black', alpha=0.5)
+        axes[0].set_title(f'{self.li_fit["amps"][0]:.4f} {self.li_fit["amps"][1]:.4f} {self.li_fit["std"]:.1f}')
+        axes[1].errorbar(spectra['wave_norm'], spectra['sob_norm'] * un_best[-1], yerr=spectra['uob_norm'], label='observed', color='black', alpha=0.5)
         
         # Breidablik
         if self.mode == 'Breidablik':
-            fitter = FitBFixed(center=self.narrow_center[1:], std=self.broad_fit['std'], rv=self.broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, max_ew=self.max_ew, min_ew=self.min_ew)
-            fitter.model(spectra['wave_norm'], [self.li_fit['amps'][0], self.li_fit['std'], *self.li_fit['amps'][1:], self.li_fit['const']], plot=True, plot_all=True)
+            if not self.metal_poor:
+                fitter = FitBFixed(center=self.narrow_center[1:], std=self.broad_fit['std'], rv=self.broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, max_ew=self.max_ew, min_ew=self.min_ew)
+                fit = [self.li_fit['amps'][0], self.li_fit['std'], *self.li_fit['amps'][1:], self.li_fit['const']]
+                un_std = un_best[1]
+                un_rv = self.li_fit['rv']
+            elif self.metal_poor:
+                fitter = FitB(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew)
+                fit = [self.li_fit['amps'][0], self.li_fit['std'], self.li_fit['rv'], self.li_fit['const']]
+                un_std = un_best[1]
+                un_rv = un_best[2]
+            # error region
+            lower = line(spectra['wave_norm'], self.err[0], un_std, un_rv, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund) 
+            upper = line(spectra['wave_norm'], self.err[1], un_std, un_rv, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund) 
+            center = line(spectra['wave_norm'], un_best[0], un_std, un_rv, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund) 
         # Gaussian
         elif self.mode == 'Gaussian':
-            fitter = FitGFixed(center=self.narrow_center, std=self.li_fit['std'], rv=self.li_fit['rv'])
-            fitter.model(spectra['wave_norm'], [*self.li_fit['amps'], self.li_fit['const']], plot=True, plot_all=True)
+            if not self.metal_poor:
+                fitter = FitGFixed(center=self.narrow_center, std=self.broad_fit['std'], rv=self.broad_fit['rv'])
+                fit = [*self.li_fit['amps'], self.li_fit['const']]
+                un_std = self.li_fit['std']
+                un_rv = self.li_fit['rv']
+            elif self.metal_poor:
+                fitter = FitG()
+                fit = [self.li_fit['amps'][0], self.li_fit['std'], self.li_fit['rv'], self.li_fit['const']]
+                un_std = un_best[1]
+                un_rv = un_best[2]
+            # error region
+            lower = line(spectra['wave_norm'], self.err[0], un_std, un_rv, center=self.li_center) 
+            upper = line(spectra['wave_norm'], self.err[1], un_std, un_rv, center=self.li_center) 
+            center = line(spectra['wave_norm'], un_best[0], un_std, un_rv, center=self.li_center) 
+
+        # plot fit
+        fitter.model(spectra['wave_norm'], fit, plot=True, plot_all=True, ax=axes[0])
+        fitter.model(spectra['wave_norm'], un_best, plot=True, plot_all=True, ax=axes[1])
         
-        #TODO: plot errors
+        # error shaded region
+        axes[0].plot(spectra['wave_norm'], center, linestyle='--', color='aquamarine', alpha=0.5)
+        axes[0].fill_between(spectra['wave_norm'], lower, y2=upper, alpha=0.5)
+        axes[1].fill_between(spectra['wave_norm'], lower, y2=upper, alpha=0.5)
+
         # show chisq region
         if self.metal_poor:
             std = self.std_galah
         else:
             std = self.broad_fit['std']
-        plt.axvline(self.narrow_center[1]*(1+self.broad_fit['rv']/self.c)-std*2)
-        plt.axvline(self.narrow_center[-1]*(1+self.broad_fit['rv']/self.c)+std*2)
+        axes[0].axvline(self.narrow_center[1]*(1+self.li_fit['rv']/self.c)-std*2)
+        axes[0].axvline(self.narrow_center[-1]*(1+self.li_fit['rv']/self.c)+std*2)
+        axes[1].axvline(self.narrow_center[1]*(1+un_rv/self.c)-un_std*2)
+        axes[1].axvline(self.narrow_center[-1]*(1+un_rv/self.c)+un_std*2)
         
-        plt.legend()
-        plt.xlabel(r'wavelengths ($\AA$)')
-        plt.ylabel('normalised flux')
-        plt.xlim(6706, 6709.5)
+        for i in range(2):
+            axes[0].legend()
+            axes[0].set_xlabel(r'wavelengths ($\AA$)')
+            axes[0].set_ylabel('normalised flux')
+        axes[0].set_xlim(6706, 6709.5)
+        plt.show()
+
+    def plot_corner(self):
+        #from ultranest.plot import cornerplot
+        #cornerplot(self.sample)
+        #plt.show()
+
+        paramnames = self.sample['paramnames']
+        data = np.array(self.sample['weighted_samples']['points'])
+        weights = np.array(self.sample['weighted_samples']['weights'])
+        cumsumweights = np.cumsum(weights)
+
+        mask = cumsumweights > 1e-4
+
+        fig = corner.corner(data[mask,:], weights=weights[mask],
+                      labels=paramnames, show_titles=True, quiet=True, quantiles=[0.5])
+        
+        # you've got to be kidding me, the version of corner on avatar doesn't have overplot_lines
+        def _get_fig_axes(fig, K):
+            if not fig.axes:
+                return fig.subplots(K, K), True
+            try:
+                return np.array(fig.axes).reshape((K, K)), False
+            except ValueError:
+                raise ValueError(
+                    (
+                        "Provided figure has {0} axes, but data has "
+                        "dimensions K={1}"
+                    ).format(len(fig.axes), K)
+                )
+        
+        none = [None]*(self.sample['samples'].shape[1] - 1)
+        xs = [self.li_fit['amps'][0], *none]
+        K = len(xs)
+        axes, _ = _get_fig_axes(fig, K)
+        axes[0,0].axvline(xs[0], alpha=0.5)
+
         plt.show()
 
     def save(self, filepath):
@@ -286,9 +429,11 @@ class FitSpec:
                 'metal_poor':self.metal_poor,
                 'li_fit':self.li_fit, 'narrow_center':self.narrow_center, # li region results
                 'mode':self.mode,
-                'delta_ew':self.delta_ew} 
+                'cayrel':self.cayrel,
+                'norris':self.norris,
+                'ultranest':self.sample} 
         np.save(filepath, dic)
-
+   
     def load(self, filepath):
         '''Load the fitted results into the class.
 
@@ -308,5 +453,8 @@ class FitSpec:
         self.li_fit = dic['li_fit']
         self.narrow_center = dic['narrow_center']
         self.mode = dic['mode']
-        self.delta_ew = dic['delta_ew']
+        self.cayrel = dic['cayrel']
+        self.norris = dic['norris']
+        self.sample = dic['ultranest']
+        self.err = np.percentile(self.sample['samples'][:,0], [50-68/2, 50+68/2])
 

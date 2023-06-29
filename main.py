@@ -11,8 +11,6 @@ from run import FitSpec
 from config import *
 import copy
 
-#TODO; check how ultranest behaves when given a large boundary (it should be ok?)
-
 # set up plotting and saving
 save_fit = True # individual fits, 1 file per fit (all info)
 load_fit = False # individual fits, 1 file per fit  (all info)
@@ -112,12 +110,14 @@ for i in objectids:
 
         # fit li region
         fitspec.fit_li(spectra) 
-        fitspec.get_err(spectra['CDELT1']) # calculates delta_ew
-        #TODO error
+        
+        # get error
+        #fitspec.get_err(spectra['CDELT1']) # calculates error approx
+        fitspec.posterior(spectra) # calculates the error approx and posterior
         
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
-
+    
     if save:
         li_fit = fitspec.li_fit
         if li_fit is None:
@@ -126,16 +126,16 @@ for i in objectids:
         if broad_fit is None:
             broad_fit = {'std':np.nan}
 
-        data_line = [i, li_fit['amps'][0], li_fit['minchisq'], broad_fit['std'], li_fit['std'], li_fit['rv']] #TODO: error
+        data_line = [i, li_fit['amps'][0], li_fit['minchisq'], broad_fit['std'], li_fit['std'], li_fit['rv']] #TODO: error from posterior, percentile is fine, but how to tell when skewed distribution?
         data.append(data_line)
-
-    # plot broad region
+    
     if plot:
-        fitspec.plot_broad(spectra_broad)
-
-    # plot Li region
-    if plot:
+        # plot broad region
+        #fitspec.plot_broad(spectra_broad)
+        # plot Li region
         fitspec.plot_li(spectra)
+        # plot cornerplot
+        #fitspec.plot_corner()
 
 # need length check to make sure data isn't overwritten
 if save and len(data) != 0: 
