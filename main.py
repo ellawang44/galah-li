@@ -112,9 +112,8 @@ for i in objectids:
         fitspec.fit_li(spectra) 
         
         # get error
-        #fitspec.get_err(spectra['CDELT1']) # calculates error approx
         fitspec.posterior(spectra) # calculates the error approx and posterior
-        
+
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
     
@@ -135,7 +134,7 @@ for i in objectids:
         # plot Li region
         fitspec.plot_li(spectra)
         # plot cornerplot
-        #fitspec.plot_corner()
+        fitspec.plot_corner()
 
 # need length check to make sure data isn't overwritten
 if save and len(data) != 0: 

@@ -166,7 +166,7 @@ class FitG:
         bounds = [(0, np.inf)] # positive finite EW
         bounds.append((self.stdl, self.stdu)) # given in init
         bounds.append((-self.rv_lim, self.rv_lim)) # given in init
-        bounds.append((0.5, 1.5)) # continuum normalisation constant
+        bounds.append((0.9, 1.1)) # continuum normalisation constant
         
         # fit
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[-2]/_c)-self.std_galah*2, wl_right=6708.961*(1+x[-2]/_c)+self.std_galah*2)
@@ -254,7 +254,7 @@ class FitGFixed:
 
         # construct bounds
         bounds = [(0, np.inf) for _ in range(len(init))] # positive finite EW
-        bounds.append((0.5, 1.5)) # continuum normalisation constant
+        bounds.append((0.9, 1.1)) # continuum normalisation constant
         
         # fit
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std*2, wl_right=6708.961*(1+self.rv/_c)+self.std*2)
@@ -366,7 +366,7 @@ class FitB:
         bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
                 (5e-4, self.stdu), # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s 
                 (-self.rv_lim, self.rv_lim), # based on stdu, except in km/s
-                (0.5, 1.5)] # continuum normalisation constant
+                (0.9, 1.1)] # continuum normalisation constant
 
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[2]/_c)-self.std_galah*2, wl_right=6708.961*(1+x[2]/_c)+self.std_galah*2)
         res = minimize(func, init, method='Nelder-Mead')
@@ -468,7 +468,7 @@ class FitBFixed:
         bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
                 (5e-4, self.stdu)] # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s
         bounds.extend([(0, np.inf) for _ in range(len(init)-2)]) # positive finite EW
-        bounds.append((0.5, 1.5)) # continuum normalisation constant
+        bounds.append((0.9, 1.1)) # continuum normalisation constant
 
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std*2, wl_right=6708.961*(1+self.rv/_c)+self.std*2)
         res = minimize(func, init, method='Nelder-Mead')
