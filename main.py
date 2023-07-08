@@ -55,7 +55,6 @@ else:
     objectids = np.load(f'{info_directory}/id_dict.npy', allow_pickle=True).item()[key]
 
 # calculate factors and get metadata values
-error_factor = np.sqrt(3*np.pi)/(np.pi**(1/4))
 data = np.load(f'{info_directory}/DR3_Li.npy')
 sobject_id = data['sobject_id']
 SNR = data['snr_c3_iraf']
@@ -116,7 +115,7 @@ for i in objectids:
 
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
-    
+
     if save:
         li_fit = fitspec.li_fit
         if li_fit is None:
@@ -130,7 +129,7 @@ for i in objectids:
     
     if plot:
         # plot broad region
-        #fitspec.plot_broad(spectra_broad)
+        fitspec.plot_broad(spectra_broad)
         # plot Li region
         fitspec.plot_li(spectra)
         # plot cornerplot

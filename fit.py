@@ -43,7 +43,7 @@ def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, fe
     plot : bool
         Plot the individual lines. 
     ax : matplotlib.axes, optional
-        The axis to plot on, if None, then it's the default one. 
+        The axis to plot on, if None, then it will create one to plot on
 
     Returns
     -------
@@ -166,7 +166,7 @@ class FitG:
         bounds = [(0, np.inf)] # positive finite EW
         bounds.append((self.stdl, self.stdu)) # given in init
         bounds.append((-self.rv_lim, self.rv_lim)) # given in init
-        bounds.append((0.9, 1.1)) # continuum normalisation constant
+        bounds.append((0.5, 1.5)) # continuum normalisation constant
         
         # fit
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[-2]/_c)-self.std_galah*2, wl_right=6708.961*(1+x[-2]/_c)+self.std_galah*2)
@@ -254,7 +254,7 @@ class FitGFixed:
 
         # construct bounds
         bounds = [(0, np.inf) for _ in range(len(init))] # positive finite EW
-        bounds.append((0.9, 1.1)) # continuum normalisation constant
+        bounds.append((0.5, 1.5)) # continuum normalisation constant
         
         # fit
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std*2, wl_right=6708.961*(1+self.rv/_c)+self.std*2)
@@ -366,11 +366,11 @@ class FitB:
         bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
                 (5e-4, self.stdu), # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s 
                 (-self.rv_lim, self.rv_lim), # based on stdu, except in km/s
-                (0.9, 1.1)] # continuum normalisation constant
+                (0.5, 1.5)] # continuum normalisation constant
 
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+x[2]/_c)-self.std_galah*2, wl_right=6708.961*(1+x[2]/_c)+self.std_galah*2)
         res = minimize(func, init, method='Nelder-Mead')
-
+       
         return res.x, res.fun
 
     def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
@@ -468,7 +468,7 @@ class FitBFixed:
         bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
                 (5e-4, self.stdu)] # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s
         bounds.extend([(0, np.inf) for _ in range(len(init)-2)]) # positive finite EW
-        bounds.append((0.9, 1.1)) # continuum normalisation constant
+        bounds.append((0.5, 1.5)) # continuum normalisation constant
 
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std*2, wl_right=6708.961*(1+self.rv/_c)+self.std*2)
         res = minimize(func, init, method='Nelder-Mead')
@@ -629,16 +629,18 @@ def pred_amp(wl_obs, flux_obs, flux_err, centers, rv=0):
 
     Returns
     -------
-    amps, err : 1darray, 1darray
-        Amplitudes of observed spectra at rv shifted centers, set to 0 if negative; the flux errors at those amplitudes.
+    amps, err, cont : 1darray, 1darray, float
+        Amplitudes of observed spectra at rv shifted centers, set to 0 if negative; the flux errors at those amplitudes; the continuum placement.
     '''
 
+    # pred continuum
+    cont = np.percentile(flux_obs, 95)
     # predict amplitudes
     inds = np.array([np.argmin(np.abs(wl_obs - i*(1+rv/299792.458))) for i in centers])
-    amps = (1 - flux_obs[inds])*1.01 # bit bigger because sampling
+    amps = (1 - (flux_obs/cont)[inds])*1.01 # bit bigger because sampling
     amps[amps < 0] = 0 # set negative amp to 0, chisq is inf otherwise
     err = flux_err[inds]
-    return amps, err
+    return amps, err, 1/cont
 
 def check_mp(amps, err):
     '''check if metal poor star. Criteria is <3 amplitudes above error.
@@ -750,7 +752,7 @@ def filter_spec(spec, sigma=5):
     spec['wave_norm'] = spec['wave_norm'][mask]
     return spec
 
-def amp_to_init(amps, std, rv):
+def amp_to_init(amps, std, rv, const):
     '''convert amplitudes to initial guess (ew & include std, rv)
     
     Parameters
@@ -761,6 +763,8 @@ def amp_to_init(amps, std, rv):
         std of the gaussians
     rv : float
         radial velocity of the star
+    const : float
+        constant for continuum normalisation
 
     Returns
     -------
@@ -769,7 +773,7 @@ def amp_to_init(amps, std, rv):
     '''
     
     init = list(np.array(amps)*np.sqrt(2*np.pi)*std) # amp to ew
-    init.extend([std, rv])
+    init.extend([std, rv, const])
     return np.array(init)
 
 def iter_fit(wl, flux, flux_err, center, stdl, stdu, std_init, rv_lim):
@@ -802,12 +806,12 @@ def iter_fit(wl, flux, flux_err, center, stdl, stdu, std_init, rv_lim):
 
     # get initial rv
     fitter = FitBroad(center=center, stdl=stdl, stdu=stdu, rv_lim=rv_lim)
-    amps, _ = pred_amp(wl, flux, flux_err, center)
-    res = amp_to_init(amps, std_init, 0)
+    amps, _, _ = pred_amp(wl, flux, flux_err, center)
+    res = amp_to_init(amps, std_init, 0, 1)[:-1]
     init_rv = cc_rv(wl, flux, center, res[:-1], res[-1], rv_lim)
     # get initial amp
-    amps, err = pred_amp(wl, flux, flux_err, center, rv=init_rv)
-    init = amp_to_init(amps, std_init, init_rv)
+    amps, err, _ = pred_amp(wl, flux, flux_err, center, rv=init_rv)
+    init = amp_to_init(amps, std_init, init_rv, 1)[:-1]
     # check metal-poor star
     if check_mp(amps, err):
         return None
