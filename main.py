@@ -63,6 +63,7 @@ teff = data['teff']
 logg = data['logg']
 feh = data['fe_h'] 
 vbroad = data['vbroad']
+e_vbroad = data['e_vbroad']
 flags = np.array([data['flag_sp'], data['flag_fe_h'], data['flag_li_fe']]).T
 factor = 6707.814/(2*np.sqrt(2*np.log(2)))/299792.458 # convert from km/s to \AA for std, might have a FWHM too
 
@@ -87,7 +88,7 @@ for i in objectids:
 
     # identify object
     ind = np.where(i==sobject_id)[0][0]
-    stdu = np.sqrt(vbroad[ind]**2 + (299792.458/22000)**2)*factor # max std based on R=22000
+    stdu = np.sqrt((vbroad[ind]+3*e_vbroad[ind])**2 + (299792.458/22000)**2)*factor # max std based on R=22000
     rv_lim = stdu/factor
     stdl = 0.09 #10km/s FWHM based on intrinsic broadening 
     #stdl = np.sqrt(vbroad[ind]**2 + (299792.458/32000)**2)*factor # min std based on R=32000
