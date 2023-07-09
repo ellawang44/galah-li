@@ -227,7 +227,7 @@ class FitSpec:
             bounds = [(max(opt[0]-self.norris*3, self.min_ew), min(opt[0]+self.norris*3, self.max_ew)),
                     (5e-4, self.stdu),
                     (-self.rv_lim, self.rv_lim),
-                    (opt[-1]-1/snr, opt[-1]+1/snr)
+                    (opt[-1]-1/self.snr, opt[-1]+1/self.snr)
                     ]
         elif not self.metal_poor and self.mode == 'Breidablik':
             fitter = FitBFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu)
@@ -239,7 +239,7 @@ class FitSpec:
                     (max(0, opt[4]-self.norris*3), opt[4]+self.norris*3),
                     (max(0, opt[5]-self.norris*3), opt[5]+self.norris*3),
                     (max(0, opt[6]-self.norris*3), opt[6]+self.norris*3),
-                    (opt[-1]-1/snr, opt[-1]+1/snr)
+                    (opt[-1]-1/self.snr, opt[-1]+1/self.snr)
                     ]
         elif self.metal_poor and self.mode == 'Gaussian':
             fitter = FitG(stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
@@ -247,7 +247,7 @@ class FitSpec:
             bounds = [(max(0, opt[0]-self.norris*3), opt[0]+self.norris*3),
                     (self.stdl, self.stdu),
                     (-self.rv_lim, self.rv_lim),
-                    (opt[-1]-1/snr, opt[-1]+1/snr)
+                    (opt[-1]-1/self.snr, opt[-1]+1/self.snr)
                     ]
         elif not self.metal_poor and self.mode == 'Gaussian':
             fitter = FitGFixed(self.narrow_center, self.broad_fit['std'], self.broad_fit['rv'])
@@ -258,16 +258,35 @@ class FitSpec:
                     (max(0, opt[3]-self.norris*3), opt[3]+self.norris*3),
                     (max(0, opt[4]-self.norris*3), opt[4]+self.norris*3),
                     (max(0, opt[5]-self.norris*3), opt[5]+self.norris*3),
-                    (opt[-1]-1/snr, opt[-1]+1/snr)
+                    (opt[-1]-1/self.snr, opt[-1]+1/self.snr)
                     ]
         #TODO: bounds rely on opt to be good, which may fail in extreme rotating stars
         #TODO: maybe the fix is to check if opt matches mean from posterior and if not extend the region?
 
-        un_fitter = UNFitter(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], fitter, bounds)
-        self.sample = un_fitter.results
+        #un_fitter = UNFitter(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], fitter, bounds)
+        #self.sample = un_fitter.results
         
+        hist, edges = np.histogram(self.sample['samples'][:,0], bins=100)
+        ind = np.argmax(hist)
+        if self.mode == 'Gaussian':
+            self.min_ew = 0
+        if ind <= 5 and abs(edges[0] - self.min_ew) > 1e-3:
+            print('ind', ind)
+            print('edge', edges[0])
+            print('opt', opt[0])
+            print('bound', bounds[0][0])
+            print('min', self.min_ew)
+            print('nor', self.norris)
+            print('cay', self.cayrel)
+            plt.hist(self.sample['samples'][:,0], bins=100)
+            plt.axvline(edges[ind], color='black')
+            plt.axvline(bounds[0][0], color='red')
+            plt.axvline(self.min_ew, color='green')
+            plt.show()
+
         # parse results
         self.err = np.percentile(self.sample['samples'][:,0], [50-68/2, 50+68/2])
+        MAP = self.get_map()
         if self.metal_poor:
             li_ew, std_li, rv, const = MAP
             amps = [0]*5
