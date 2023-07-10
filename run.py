@@ -262,9 +262,11 @@ class FitSpec:
                     ]
         #TODO: bounds rely on opt to be good, which may fail in extreme rotating stars
         #TODO: maybe the fix is to check if opt matches mean from posterior and if not extend the region?
-
-        #un_fitter = UNFitter(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], fitter, bounds)
-        #self.sample = un_fitter.results
+        
+        print(opt)
+        print(bounds)
+        un_fitter = UNFitter(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], fitter, bounds)
+        self.sample = un_fitter.results
         
         hist, edges = np.histogram(self.sample['samples'][:,0], bins=100)
         ind = np.argmax(hist)

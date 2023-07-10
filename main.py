@@ -14,7 +14,7 @@ import copy
 # set up plotting and saving
 save_fit = True # individual fits, 1 file per fit (all info)
 load_fit = False # individual fits, 1 file per fit  (all info)
-plot = False
+plot = True
 save = False # simplified fit results, compiled into 1 file
 
 # argparse to change keys easily
@@ -50,6 +50,8 @@ elif key == 'test':
     # initialise on pixel depth
     # min, 10, 100, 1000, 10000, 100000, max
     # removing cont norm helps for ~10000 chisq
+    #objectids=[140710003901284] # norris error region is too small and doesn't capture the full posterior
+    objectids = [131120002001376]
 # actual run
 else:
     objectids = np.load(f'{info_directory}/id_dict.npy', allow_pickle=True).item()[key]
@@ -112,11 +114,15 @@ for i in objectids:
         fitspec.fit_li(spectra) 
         
         # get error
+        import time
+        start = time.time()
         fitspec.posterior(spectra) # calculates the error approx and posterior
+        end = time.time()
+        print(end - start)
 
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
-
+    
     if save:
         li_fit = fitspec.li_fit
         if li_fit is None:
