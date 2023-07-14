@@ -4,7 +4,7 @@ import ultranest
 
 class UNFitter():
 
-    def __init__(self, wl_obs, flux_obs, flux_err, fitter, constraints, opt=None, nwalkers=8):
+    def __init__(self, wl_obs, flux_obs, flux_err, fitter, constraints, mode, metal_poor, opt=None, nwalkers=8):
         self.wl_obs = wl_obs
         self.flux_obs = flux_obs
         self.flux_err = flux_err
@@ -12,20 +12,22 @@ class UNFitter():
         self.c = 299792.458
         # define variables
         self.constraints = constraints 
-        self.ndim = len(self.constraints)
+        ndim = len(self.constraints)
+        self.mode = mode
+        self.metal_poor = metal_poor
         # randomise initial position of walkers
-        p0 = np.zeros((nwalkers, self.ndim))
+        p0 = np.zeros((nwalkers, ndim))
         for i in range(nwalkers):
-            for j in range(self.ndim):
+            for j in range(ndim):
                 minP, maxP = constraints[j]
                 p0[i][j] = np.random.uniform(minP, maxP)
         # names of columns
-        if self.ndim == 4:
+        if metal_poor:
             param_names = ['A(Li)', 'vbroad', 'rv', 'const']
-        elif self.ndim == 7:
-            param_names = ['A(Li)', 'C/N1', 'Fe', 'C/N2', 'Ce/V', 'C/N3', 'const']
-        else:
-            param_names = ['A(Li)', 'vbroad', 'C/N1', 'Fe', 'C/N2', 'Ce/V', 'C/N3', 'const']
+        elif mode == 'Gaussian':
+            param_names = ['A(Li)', 'CN1', 'Fe', 'CN2', 'Ce/V', 'CN3', 'const']
+        elif mode == 'Breidablik':
+            param_names = ['A(Li)', 'vbroad', 'CN1', 'Fe', 'CN2', 'Ce/V', 'CN3', 'const']
         self.sampler = ultranest.ReactiveNestedSampler(param_names, self.like, self.transform)
         self.results = self.sampler.run(viz_callback=False, show_status=False)
 
@@ -65,7 +67,7 @@ class UNFitter():
         param: the parameters of the current iteration
         The likelihood function, logged so you can sum
         '''
-        if self.ndim == 4:
+        if self.metal_poor:
             rv = param[-2]
             std = self.fitter.std_galah
         else:

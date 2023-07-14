@@ -15,7 +15,7 @@ _spectra = Spectra()
 _spectra.cut_models = _spectra.models[136:298]
 _wl = vac_to_air(read.get_wavelengths()*10)[136:298]
 
-def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, feh=None, rew_to_abund=None, plot=False, ax=None):
+def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, feh=None, ew_to_abund=None, min_ew=None, plot=False, ax=None):
     '''Create a spectral line, either gaussian or from breidablik. There are some overlapping values.
     
     Parameters
@@ -38,8 +38,10 @@ def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, fe
         Used in breidablik, logg of star 
     feh : float, optional
         Used in breidablik, feh of star 
-    rew_to_abund : object
-        Converting REW to A(Li), used in Breidablik since the input there is A(Li), but the input to this function is EW
+    ew_to_abund : object, optional
+        Converting EW to A(Li), used in Breidablik since the input there is A(Li), but the input to this function is EW. 
+    min_ew : float, optional
+        The EW corresponding to A(Li) = -0.5, used for mirroring to emission.
     plot : bool
         Plot the individual lines. 
     ax : matplotlib.axes, optional
@@ -53,8 +55,19 @@ def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, fe
 
     lambda0 = 6707.814*(1+rv/299792.458) # line center is shifted
     if breidablik: # breidablik line profile
-        ali = rew_to_abund(np.log10(ew/lambda0)) # convert EW to REW
-        flux = _spectra._predict_flux(teff, logg, feh, [ali])[0] # this won't produce warnings anymore
+        if ew >= min_ew:
+            ali = ew_to_abund(ew)
+            flux = _spectra._predict_flux(teff, logg, feh, [ali])[0]
+        elif ew <= -min_ew:
+            ali = ew_to_abund(np.abs(ew))
+            flux = 2-_spectra._predict_flux(teff, logg, feh, [ali])[0]
+        else:
+            grid_ews = np.array([-min_ew, min_ew])
+            flux = _spectra._predict_flux(teff, logg, feh, -0.5)[0]
+            fluxes = np.array([2-flux, flux])
+            grads = (fluxes[1] - fluxes[0])/(grid_ews[1] - grid_ews[0])
+            intercepts = fluxes[1] - grads*grid_ews[1]
+            flux = ew*grads+intercepts
         # rv shift
         wl = _wl*(1+rv/299792.458)
         y = CubicSpline(wl, flux)(x)
@@ -74,6 +87,8 @@ def line(x, ew, std, rv, center=None, breidablik=False, teff=None, logg=None, fe
         ax.axvline(lambda0, linestyle='--')
 
     return y
+
+
 
 def chisq(wl_obs, flux_obs, flux_err, model, params, bounds, wl_left=None, wl_right=None):
     '''Calculate the chisq with bounds. If value is out of bounds, then chisq is inf. Note parameter and bounds need to have same ordering. 
@@ -104,6 +119,8 @@ def chisq(wl_obs, flux_obs, flux_err, model, params, bounds, wl_left=None, wl_ri
         The chisq value 
     '''
     
+    assert len(params) == len(bounds)
+
     for p, (l, r) in zip(params, bounds):
         if (p < l) or (r < p):
             return np.inf
@@ -163,7 +180,7 @@ class FitG:
         '''
         
         # construct bounds
-        bounds = [(0, np.inf)] # positive finite EW
+        bounds = [(-np.inf, np.inf)] # Li EW can be negative
         bounds.append((self.stdl, self.stdu)) # given in init
         bounds.append((-self.rv_lim, self.rv_lim)) # given in init
         bounds.append((0.5, 1.5)) # continuum normalisation constant
@@ -253,7 +270,8 @@ class FitGFixed:
         '''
 
         # construct bounds
-        bounds = [(0, np.inf) for _ in range(len(init))] # positive finite EW
+        bounds = [(-np.inf, np.inf)] # Li EW can be negative
+        bounds.extend([(0, np.inf) for _ in range(len(init)-2)]) # positive finite EW
         bounds.append((0.5, 1.5)) # continuum normalisation constant
         
         # fit
@@ -306,7 +324,7 @@ class FitB:
     For metal-poor stars
     '''
 
-    def __init__(self, teff, logg, feh, rew_to_abund, max_ew, min_ew, stdu=None, rv_lim=None, std_galah=None):
+    def __init__(self, teff, logg, feh, ew_to_abund, min_ew, max_ew=None, stdu=None, rv_lim=None, std_galah=None):
         '''Optional parameters are not needed if only using the model and not fitting.
         
         Parameters
@@ -317,12 +335,12 @@ class FitB:
             Used in breidablik, logg of star 
         feh : float
             Used in breidablik, feh of star 
-        rew_to_abund : object
+        ew_to_abund : object
             Converting REW to A(Li), used in Breidablik since the input there is A(Li), but the input to this function is EW
+        min_ew : float 
+            The EW at A(Li) = -0.5 to mirror to emission on
         max_ew : float, optional
-            The maximum ew that the line can have, limit based on rew_to_abund
-        min_ew : float, optional 
-            The minimum ew that the line can have, limit based on rew_to_abund
+            The maximum EW that is allowed
         stdu : float, optional
             The upper limit on std in \AA, this is based on the broadening for GALAH (roughly R=22000)
         rv_lim : float, optional
@@ -334,7 +352,7 @@ class FitB:
         self.teff = teff
         self.logg = logg
         self.feh = feh
-        self.rew_to_abund = rew_to_abund
+        self.ew_to_abund = ew_to_abund
         # don't need if using model
         self.max_ew = max_ew
         self.min_ew = min_ew
@@ -363,7 +381,7 @@ class FitB:
         '''
         
         # construct bounds
-        bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
+        bounds = [(-self.max_ew, self.max_ew), # based on cogs
                 (5e-4, self.stdu), # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s 
                 (-self.rv_lim, self.rv_lim), # based on stdu, except in km/s
                 (0.5, 1.5)] # continuum normalisation constant
@@ -394,7 +412,7 @@ class FitB:
         '''
     
         ews, std, offset, const = params
-        y = line(wl_obs, ews, std, offset, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, plot=plot, ax=ax)
+        y = line(wl_obs, ews, std, offset, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew, plot=plot, ax=ax)
         
         y /= const
 
@@ -406,7 +424,7 @@ class FitBFixed:
     For non-metal-poor stars
     '''
     
-    def __init__(self, center, std, rv, teff, logg, feh, rew_to_abund, max_ew, min_ew, stdu=None):
+    def __init__(self, center, std, rv, teff, logg, feh, ew_to_abund, min_ew, max_ew=None, stdu=None):
         '''Optional parameters are not needed if only using the model and not fitting.
         
         Parameters
@@ -423,12 +441,12 @@ class FitBFixed:
             Used in breidablik, logg of star 
         feh : float
             Used in breidablik, feh of star 
-        rew_to_abund : object
+        ew_to_abund : object
             Converting REW to A(Li), used in Breidablik since the input there is A(Li), but the input to this function is EW
+        min_ew : float
+            The EW at A(Li) = -0.5 to mirror to emission
         max_ew : float, optional
-            The maximum ew that the line can have, limit based on rew_to_abund
-        min_ew : float, optional 
-            The minimum ew that the line can have, limit based on rew_to_abund
+            The maximum EW that is allowed.
         stdu : float, optional
             The upper limit on std in \AA, this is based on the broadening for GALAH (roughly R=22000)
         '''
@@ -439,7 +457,7 @@ class FitBFixed:
         self.teff = teff
         self.logg = logg
         self.feh = feh
-        self.rew_to_abund = rew_to_abund
+        self.ew_to_abund = ew_to_abund
         # don't need if using model
         self.max_ew = max_ew
         self.min_ew = min_ew
@@ -465,9 +483,9 @@ class FitBFixed:
             Fitted parameters: Li EW, Li std, *ews, const; minimum chisq value at best fit.
         '''
 
-        bounds = [(self.min_ew, self.max_ew), # based on rew_to_abund
-                (5e-4, self.stdu)] # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s
-        bounds.extend([(0, np.inf) for _ in range(len(init)-2)]) # positive finite EW
+        bounds = [(-self.max_ew, self.max_ew), # based on cog
+                (5e-4, self.std)] # lower limit is sigma in \AA, corresponds to 0.05 FWHM in km/s, upper limit is the std from gaussians, Li has intrinsic broadening
+        bounds.extend([(0, np.inf) for _ in range(len(init)-3)]) # positive finite EW
         bounds.append((0.5, 1.5)) # continuum normalisation constant
 
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std*2, wl_right=6708.961*(1+self.rv/_c)+self.std*2)
@@ -496,7 +514,7 @@ class FitBFixed:
         '''
 
         ali, std_li, *ews, const = params
-        y = line(wl_obs, ali, std_li, self.rv, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, plot=plot, ax=ax) 
+        y = line(wl_obs, ali, std_li, self.rv, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew, plot=plot, ax=ax) 
         
         for a, c in zip(ews, self.center):
             y1 = line(wl_obs, a, self.std, self.rv, center=c, plot=plot_all, ax=ax)

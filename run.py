@@ -8,6 +8,7 @@ from scipy.interpolate import interp1d, CubicSpline
 from astro_tools import vac_to_air
 from un_fitter import UNFitter
 import corner
+import time
 
 class FitSpec:
     '''Fitting 1 spectrum, contains plotting, and save/load. 
@@ -48,16 +49,27 @@ class FitSpec:
         self.feh = feh
         self.li_center = 6707.8139458 # weighted mean of smith98 Li7 line centers
         self.c = 299792.458 # speed of light in km/s
-        if ~np.isnan(teff) and ~np.isnan(logg) and ~np.isnan(feh): # valid sp from galah
+        if self.grid_check(np.array([teff]), np.array([logg]), np.array([feh]))[0]: # valid sp from galah
             self.mode = 'Breidablik'
         else:
             self.mode = 'Gaussian'
         # make model to translate between rew and abundance
         # can't run breidablik with nans
         if self.mode == 'Breidablik':
-            self.rew_to_abund = self.gen_rew_to_abund()
+            self.gen_ew_to_abund()
 
-    def gen_rew_to_abund(self):
+    def grid_check(self, teffs, loggs, fehs):
+        with open('grid_snapshot.txt', 'r') as f:
+            t_step, m_step = np.float_(f.readline().split())
+            grid = np.loadtxt(f)
+        scaled_sp = np.array([teffs*t_step, loggs, fehs*m_step]).T
+        tile = np.array([np.tile(sp, (grid.shape[0], 1)) for sp in scaled_sp])
+        dist = np.sqrt(np.sum(np.square(grid - tile), axis = 2))
+        min_dist = np.min(dist, axis=1)
+        in_grid = np.sqrt(3*0.25**2) > min_dist
+        return in_grid
+    
+    def gen_ew_to_abund(self):
         '''Generate the function converting rew to abundances
 
         Returns
@@ -66,24 +78,13 @@ class FitSpec:
             function which takes rew and gives the corresponding abundance
         '''
 
-        # calculate corresponding rews
+        # calculate corresponding ews
         abunds = list(np.arange(-0.5, 5.05, 0.5)) # extrapolating 1 dex
-        rews = np.array([tools.rew(_wl, spec, center=6709.659, upper=100, lower=100) for spec in _spectra._predict_flux(self.teff, self.logg, self.feh, abunds)])
-        # remove all abunds and rews below the point that is not monotonically increasing
-        inds = np.where(rews[1:] - rews[:-1] < 0)[0]
-        if len(inds) > 0:
-            ind = inds[-1] + 1
-            abunds = abunds[ind:]
-            rews = rews[ind:]
-            if ind > 2: # there shouldn't be too many points removed, if the >4 abundance extrapolates incorrectly, I want to know
-                print(f'cog removed {ind} points, sp {self.teff} {self.logg} {self.feh}')
-        # create interlation models
-        cs = CubicSpline(rews, abunds) # cog
-        grad, inter = np.polyfit(abunds[:2], rews[:2], deg=1) # linear extrapolate
-        # set maximum and minimum allowed ews
-        self.max_ew = 10**rews[-1]*6707.814 # high abundances/errors might be incorrect due to restriction
-        self.min_ew = 10**(-5*grad+inter)*6707.814 # technically don't need this to make the code work, but breidablik does eventually give fully looking profiles when abundance is too low
-        return lambda rew: (rew-inter)/grad if rew < rews[0] else cs(rew)
+        ews = np.array([self.li_center*10**tools.rew(_wl, spec, center=6709.659, upper=100, lower=100) for spec in _spectra._predict_flux(self.teff, self.logg, self.feh, abunds)])
+        # set values
+        self.min_ew = ews[0]
+        self.max_ew = ews[-1]
+        self.ew_to_abund = lambda x: CubicSpline(ews, abunds)(x)
 
     def fit_broad(self, spectra, center=np.array([6696.085, 6698.673, 6703.565, 6705.101, 6710.317, 6711.819, 6713.095, 6713.742, 6717.681])):
         '''Fit the broad region of the spectrum, ews, std, and rv simultaneously. None if the star is metal-poor (less than 3 lines with amplitudes above noise).
@@ -131,7 +132,7 @@ class FitSpec:
         #TODO: has a tendency to fit poorly on broad spectra, need to modify initial conditions
         if self.metal_poor:
             # if metal poor, no CN, because otherwise it's uncontrained again
-            fitter = FitB(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
+            fitter = FitB(self.teff, self.logg, self.feh, self.ew_to_abund, self.min_ew, max_ew=self.max_ew, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
             # use cross correlated initial rv
             amps, _, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
             init = amp_to_init(amps, self.std_galah, 0, 1)[:-1]
@@ -146,7 +147,7 @@ class FitSpec:
             const = res[3]
             amps = [0,0,0,0,0]
         else:
-            fitter = FitBFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu)
+            fitter = FitBFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.ew_to_abund, self.min_ew, max_ew=self.max_ew, stdu=self.stdu)
             # initial guess from the amplitudes in the spectrum (a little bit overestimated)
             amps, _, const = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'])
             init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'], const)[:-3] # remove std and rv, fixed
@@ -222,17 +223,17 @@ class FitSpec:
         
         # set up bounds and fitters
         if self.metal_poor and self.mode == 'Breidablik':
-            fitter = FitB(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
+            fitter = FitB(self.teff, self.logg, self.feh, self.ew_to_abund, self.min_ew, max_ew=self.max_ew, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
             opt = [self.li_init_fit['amps'][0], self.li_init_fit['std'], self.li_init_fit['rv'], self.li_init_fit['const']]
-            bounds = [(max(opt[0]-self.norris*3, self.min_ew), min(opt[0]+self.norris*3, self.max_ew)),
+            bounds = [(max(opt[0]-self.norris*3, -self.max_ew), min(opt[0]+self.norris*3, self.max_ew)),
                     (5e-4, self.stdu),
                     (-self.rv_lim, self.rv_lim),
                     (opt[-1]-1/self.snr, opt[-1]+1/self.snr)
                     ]
         elif not self.metal_poor and self.mode == 'Breidablik':
-            fitter = FitBFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew, stdu=self.stdu)
+            fitter = FitBFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.ew_to_abund, self.min_ew, max_ew=self.max_ew, stdu=self.stdu)
             opt = [self.li_init_fit['amps'][0], self.li_init_fit['std'], *self.li_init_fit['amps'][1:], self.li_init_fit['const']]
-            bounds = [(max(opt[0]-self.norris*3, self.min_ew), min(opt[0]+self.norris*3, self.max_ew)),
+            bounds = [(max(opt[0]-self.norris*3, -self.max_ew), min(opt[0]+self.norris*3, self.max_ew)),
                     (5e-4, self.stdu),
                     (max(0, opt[2]-self.norris*3), opt[2]+self.norris*3),
                     (max(0, opt[3]-self.norris*3), opt[3]+self.norris*3),
@@ -244,7 +245,7 @@ class FitSpec:
         elif self.metal_poor and self.mode == 'Gaussian':
             fitter = FitG(stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
             opt = [self.li_init_fit['amps'][0], self.li_init_fit['std'], self.li_init_fit['rv'], self.li_init_fit['const']]
-            bounds = [(max(0, opt[0]-self.norris*3), opt[0]+self.norris*3),
+            bounds = [(opt[0]-self.norris*3, opt[0]+self.norris*3),
                     (self.stdl, self.stdu),
                     (-self.rv_lim, self.rv_lim),
                     (opt[-1]-1/self.snr, opt[-1]+1/self.snr)
@@ -252,7 +253,7 @@ class FitSpec:
         elif not self.metal_poor and self.mode == 'Gaussian':
             fitter = FitGFixed(self.narrow_center, self.broad_fit['std'], self.broad_fit['rv'])
             opt = [*self.li_init_fit['amps'], self.li_init_fit['const']]
-            bounds = [(max(0, opt[0]-self.norris*3), opt[0]+self.norris*3),
+            bounds = [(opt[0]-self.norris*3, opt[0]+self.norris*3),
                     (max(0, opt[1]-self.norris*3), opt[1]+self.norris*3),
                     (max(0, opt[2]-self.norris*3), opt[2]+self.norris*3),
                     (max(0, opt[3]-self.norris*3), opt[3]+self.norris*3),
@@ -265,8 +266,11 @@ class FitSpec:
         
         print(opt)
         print(bounds)
-        un_fitter = UNFitter(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], fitter, bounds)
+        start = time.time()
+        un_fitter = UNFitter(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], fitter, bounds, mode=self.mode, metal_poor=self.metal_poor)
+        end = time.time()
         self.sample = un_fitter.results
+        self.time = end - start
         
         hist, edges = np.histogram(self.sample['samples'][:,0], bins=100)
         ind = np.argmax(hist)
@@ -386,15 +390,15 @@ class FitSpec:
         # Breidablik
         if self.mode == 'Breidablik':
             if not self.metal_poor:
-                fitter = FitBFixed(center=self.narrow_center[1:], std=self.broad_fit['std'], rv=self.broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund, max_ew=self.max_ew, min_ew=self.min_ew)
+                fitter = FitBFixed(center=self.narrow_center[1:], std=self.broad_fit['std'], rv=self.broad_fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew)
                 fit_list = [fit['amps'][0], fit['std'], *fit['amps'][1:], fit['const']]
             elif self.metal_poor:
-                fitter = FitB(self.teff, self.logg, self.feh, self.rew_to_abund, self.max_ew, self.min_ew)
+                fitter = FitB(self.teff, self.logg, self.feh, self.ew_to_abund, self.min_ew)
                 fit_list = [fit['amps'][0], fit['std'], fit['rv'], fit['const']]
             # error region
             if mode == 'posterior':
-                lower = line(spectra['wave_norm'], self.err[0], fit['std'], fit['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund) 
-                upper = line(spectra['wave_norm'], self.err[1], fit['std'], fit['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, rew_to_abund=self.rew_to_abund) 
+                lower = line(spectra['wave_norm'], self.err[0], fit['std'], fit['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
+                upper = line(spectra['wave_norm'], self.err[1], fit['std'], fit['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
         # Gaussian
         elif self.mode == 'Gaussian':
             if not self.metal_poor:
@@ -489,7 +493,9 @@ class FitSpec:
         filepath : str
             Filepath to saved results
         '''
-
+        
+        names = ['broad_fit', 'broad_center', # broad 
+                ]
         dic = {'broad_fit':self.broad_fit, 'broad_center':self.broad_center, # broad region results
                 'metal_poor':self.metal_poor,
                 'li_init_fit': self.li_init_fit,
@@ -497,7 +503,8 @@ class FitSpec:
                 'mode':self.mode,
                 'cayrel':self.cayrel,
                 'norris':self.norris,
-                'ultranest':self.sample} 
+                'sample':self.sample,
+                'time':self.time} 
         np.save(filepath, dic)
    
     def load(self, filepath):
@@ -510,6 +517,10 @@ class FitSpec:
         '''
 
         dic = np.load(filepath, allow_pickle=True).item()
+        '''
+        for name, value in dic.items():
+            setattr(self, name, value)
+        '''
         # broad region results
         self.broad_fit = dic['broad_fit']
         self.broad_center = dic['broad_center']
@@ -522,5 +533,6 @@ class FitSpec:
         self.mode = dic['mode']
         self.cayrel = dic['cayrel']
         self.norris = dic['norris']
+        #self.time = dic['time']
         self.sample = dic['ultranest']
         self.err = np.percentile(self.sample['samples'][:,0], [50-68/2, 50+68/2])
