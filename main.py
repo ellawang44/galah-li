@@ -4,7 +4,7 @@ from read import read_spectra, read_meta, cut
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from fit import filter_spec, line
+from fit import filter_spec, line, pred_amp
 from scipy.stats import norm
 import argparse
 from run import FitSpec
@@ -12,9 +12,9 @@ from config import *
 import copy
 
 # set up plotting and saving
-save_fit = True # individual fits, 1 file per fit (all info)
-load_fit = False # individual fits, 1 file per fit  (all info)
-plot = True
+save_fit = False # individual fits, 1 file per fit (all info)
+load_fit = True # individual fits, 1 file per fit  (all info)
+plot = False
 save = False # simplified fit results, compiled into 1 file
 
 # argparse to change keys easily
@@ -32,7 +32,7 @@ elif key == 'test':
     objectids = []
     objectids.extend([170121002201384, 170121002201396, 170104002901059, 170108002201155, 170508006401346, 140812004401119, 140823001401041, 160418005601330, 180621002901320, 160519005201183, 160520002601357, 150607003602126, 150601003201221, 171228003702082, 160130003101273]) # a range of chisq to test new fitting
     objectids.extend([140808000901102, 131216003201003, 140209005201151]) # metal poor stars
-    objectids.extend(list(np.load('data/benchmark.npy'))) # benchmark stars
+    #objectids.extend(list(np.load('data/benchmark.npy'))) # benchmark stars
     objectids.append(150112002502282) # young excited lil star
     objectids.extend([171228003702082]) # cont norm is bad 
     objectids.extend([170516004101176, 150901002401298, 160420003301307, 150208005201271]) # std and rv still drawing a line for flag=0 -- old results, not sure if still on line now # currently using a non-giant test set for multiple gaussians
@@ -50,8 +50,14 @@ elif key == 'test':
     # initialise on pixel depth
     # min, 10, 100, 1000, 10000, 100000, max
     # removing cont norm helps for ~10000 chisq
-    #objectids=[140710003901284] # norris error region is too small and doesn't capture the full posterior
-    objectids = [131120002001376]
+    #objectids=[140710003901284] # yeah so error region used to be too small, but it's fixed itself now that cont norm is part of the initial guess and I hate it. 
+    #objectids = [131216002601003] # Li is a bit narrow
+    #objectids = [131120002001376] # my lovely "quick" test case after implementing changes
+    #objectids = [160813005101117] # bad spectrum, bad initial guess yes but not sure we need it to work for high std
+    #objectids = [140708005801203, 140114005001165] # strong Li lines, used to run into edge, fixed itself after cont norm. zzz
+    #objectids = [140710003901284] # gadi is haunted
+    objectids = [140708005801203] # bad scipy fit
+    #objectids = list(np.load('data/benchmark.npy')) # benchmark stars
 # actual run
 else:
     objectids = np.load(f'{info_directory}/id_dict.npy', allow_pickle=True).item()[key]
@@ -61,12 +67,12 @@ data = np.load(f'{info_directory}/DR3_Li.npy')
 sobject_id = data['sobject_id']
 SNR = data['snr_c3_iraf']
 DR3_rvs = data['rv_galah']
+e_rv = data['e_rv_galah']
 teff = data['teff']
 logg = data['logg']
 feh = data['fe_h'] 
 vbroad = data['vbroad']
 e_vbroad = data['e_vbroad']
-flags = np.array([data['flag_sp'], data['flag_fe_h'], data['flag_li_fe']]).T
 factor = 6707.814/(2*np.sqrt(2*np.log(2)))/299792.458 # convert from km/s to \AA for std, might have a FWHM too
 
 if save:
@@ -90,6 +96,10 @@ for i in objectids:
 
     # identify object
     ind = np.where(i==sobject_id)[0][0]
+    if np.isnan(e_vbroad[ind]):
+        e_vbroad[ind] = 10 # this is where 99% of the values are below
+    if np.isnan(e_rv[ind]):
+        e_rv[ind] = 3 # 99% of values are below
     stdu = np.sqrt((vbroad[ind]+3*e_vbroad[ind])**2 + (299792.458/22000)**2)*factor # max std based on R=22000
     rv_lim = stdu/factor
     stdl = 0.09 #10km/s FWHM based on intrinsic broadening 
@@ -99,7 +109,7 @@ for i in objectids:
         continue
 
     # fitting
-    fitspec = FitSpec(std_galah=std_galah, stdl=stdl, stdu=stdu, rv_lim=rv_lim, snr=SNR[ind], sid=i, teff=teff[ind], logg=logg[ind], feh=feh[ind])
+    fitspec = FitSpec(std_galah=std_galah, stdl=stdl, stdu=stdu, rv_lim=rv_lim, e_vbroad=e_vbroad[ind]*factor, e_rv=e_rv[ind], snr=SNR[ind], sid=i, teff=teff[ind], logg=logg[ind], feh=feh[ind])
     # load fit
     if os.path.exists(f'{info_directory}/fits/{i}.npy') and load_fit:
         fitspec.load(f'{info_directory}/fits/{i}.npy')
@@ -114,15 +124,11 @@ for i in objectids:
         fitspec.fit_li(spectra) 
         
         # get error
-        import time
-        start = time.time()
-        fitspec.posterior(spectra) # calculates the error approx and posterior
-        end = time.time()
-        print(end - start)
+        #fitspec.posterior(spectra) # calculates the error approx and posterior
 
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
-    
+
     if save:
         li_fit = fitspec.li_fit
         if li_fit is None:
@@ -138,9 +144,9 @@ for i in objectids:
         # plot broad region
         fitspec.plot_broad(spectra_broad)
         # plot Li region
-        fitspec.plot_li(spectra)
+        fitspec.plot_li(spectra, mode='minimize')
         # plot cornerplot
-        fitspec.plot_corner()
+        #fitspec.plot_corner()
 
 # need length check to make sure data isn't overwritten
 if save and len(data) != 0: 

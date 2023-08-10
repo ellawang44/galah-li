@@ -185,4 +185,4 @@ x = np.rec.array([
         ('snr_DR3', np.float64)
         ]
     )
-np.save(f'{main_directory}/allstars_new.npy', x)
+np.save(f'{main_directory}/allstars.npy', x)

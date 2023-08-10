@@ -14,7 +14,7 @@ class FitSpec:
     '''Fitting 1 spectrum, contains plotting, and save/load. 
     '''
 
-    def __init__(self, std_galah, stdl, stdu, rv_lim, snr, sid, teff, logg, feh):
+    def __init__(self, std_galah, stdl, stdu, rv_lim, e_vbroad, e_rv, snr, sid, teff, logg, feh):
         '''
         Parameters
         ----------
@@ -26,6 +26,10 @@ class FitSpec:
             upper limit on std for both gaussians and Breidablik, in \AA. Corresponds to galah std + some error in terms of R=22000
         rv_lim : float
             The limit on rv, mirrored limit on either side, it is the same limit as stdu, except in km/s.
+        e_vbroad : float
+            The error on std
+        e_rv : float
+            The error on rv
         snr : float
             The SNR per pixel of the spectrum.
         sid : int
@@ -42,6 +46,8 @@ class FitSpec:
         self.stdl = stdl
         self.stdu = stdu
         self.rv_lim = rv_lim
+        self.e_vbroad = e_vbroad
+        self.e_rv = e_rv
         self.snr = snr
         self.sid = sid
         self.teff = teff
@@ -107,6 +113,24 @@ class FitSpec:
             self.broad_fit = {'amps':res[:-2], 'std':res[-2], 'rv':res[-1]}
         # save the centers used
         self.broad_center = center
+    
+    def mp_init(self, spectra, perc):
+        '''Init values for metal poor fit, involves a cross correlation for better rv estimate.
+        
+        Parameters
+        ----------
+        spectra : dict
+            Dictionary containing spectrum, from read (keys: wave_norm, sob_norm, uob_norm) 
+        '''
+        
+        # use cross correlated initial rv
+        amps, _, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0, perc=perc)
+        init = amp_to_init(amps, self.std_galah, 0, 1)[:-1]
+        init_rv = cc_rv(spectra['wave_norm'], spectra['sob_norm'], [self.li_center], init[:-1], init[-1], self.rv_lim)
+        # predict amps again with cross correlated initial rv
+        amps, _, const = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], [self.li_center], rv=init_rv, perc=perc)
+        init = amp_to_init(amps, self.std_galah, init_rv, const)
+        return init
 
     def fit_li(self, spectra, center=np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.961])):
         '''Fit the Li region of the spectrum, fits ew, std, and rv if metal-poor (less than 3 lines with amplitudes above noise), or else fixes std and rv and only fits ews.
@@ -133,15 +157,10 @@ class FitSpec:
         if self.metal_poor:
             # if metal poor, no CN, because otherwise it's uncontrained again
             fitter = FitB(self.teff, self.logg, self.feh, self.ew_to_abund, self.min_ew, max_ew=self.max_ew, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
-            # use cross correlated initial rv
-            amps, _, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
-            init = amp_to_init(amps, self.std_galah, 0, 1)[:-1]
-            init_rv = cc_rv(spectra['wave_norm'], spectra['sob_norm'], [self.li_center], init[:-1], init[-1], self.rv_lim)
-            # predict amps again with cross correlated initial rv
-            amps, _, const = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], [self.li_center], rv=init_rv)
-            init = amp_to_init(amps, self.std_galah, init_rv, const)
-            # fit and turn results into consistent format
+            init = self.mp_init(spectra, perc=95)
+            # fit 
             res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+            # turn results into consistent format
             std_li = res[1]
             rv = res[2]
             const = res[3]
@@ -149,11 +168,12 @@ class FitSpec:
         else:
             fitter = FitBFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.ew_to_abund, self.min_ew, max_ew=self.max_ew, stdu=self.stdu)
             # initial guess from the amplitudes in the spectrum (a little bit overestimated)
-            amps, _, const = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'])
-            init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'], const)[:-3] # remove std and rv, fixed
-            init = [min(max(init[0], self.min_ew), self.max_ew), self.broad_fit['std'], *init[1:], const] # reformat
-            # fit and turn results into consistent format
+            amps, _, const = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'], perc=95)
+            init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'], const) 
+            init = [min(max(init[0], self.min_ew), self.max_ew), self.broad_fit['std'], *init[1:-3], const] # reformat
+            # fit 
             res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+            # turn results into consistent format
             std_li = res[1]
             rv = self.broad_fit['rv']
             amps = res[2:-1]
@@ -176,15 +196,10 @@ class FitSpec:
         if self.metal_poor:
             # if metal poor, no CN, because otherwise it's uncontrained again
             fitter = FitG(stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
-            # use cross correlated initial rv
-            amps, _, _ = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=[self.li_center], rv=0)
-            init = amp_to_init(amps, self.std_galah, 0, 1)[:-1]
-            init_rv = cc_rv(spectra['wave_norm'], spectra['sob_norm'], [self.li_center], init[:-1], init[-1], self.rv_lim)
-            # predict amps again with cross correlated initial rv
-            amps, _, const = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], [self.li_center], rv=init_rv)
-            init = amp_to_init(amps, self.std_galah, init_rv, const)
-            # fit and turn results into consistent format
+            init = self.mp_init(spectra, perc=95)
+            # fit
             res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+            # turn results into consistent format
             std_li = res[1]
             rv = res[2]
             const = res[3]
@@ -192,10 +207,11 @@ class FitSpec:
         else:
             fitter = FitGFixed(self.narrow_center, self.broad_fit['std'], self.broad_fit['rv'])
             # initial guess from the amplitudes in the spectrum (a little bit overestimated)
-            amps, _, const = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'])
-            init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'], const)[:-3] # remove std and rv, fixed
-            # fit and turn results into consistent format
-            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=init)
+            amps, _, const = pred_amp(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'], perc=95)
+            init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'], const) 
+            # fit 
+            res, minchisq = fitter.fit(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], init=[*init[:-3], init[-1]])
+            # turn results into consistent format
             std_li = self.broad_fit['std']
             rv = self.broad_fit['rv']
             amps = res[1:-1]
@@ -225,71 +241,51 @@ class FitSpec:
         if self.metal_poor and self.mode == 'Breidablik':
             fitter = FitB(self.teff, self.logg, self.feh, self.ew_to_abund, self.min_ew, max_ew=self.max_ew, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
             opt = [self.li_init_fit['amps'][0], self.li_init_fit['std'], self.li_init_fit['rv'], self.li_init_fit['const']]
-            bounds = [(max(opt[0]-self.norris*3, -self.max_ew), min(opt[0]+self.norris*3, self.max_ew)),
+            bounds = [(max(opt[0]-self.norris*5, -self.max_ew), min(opt[0]+self.norris*5, self.max_ew)),
                     (5e-4, self.stdu),
                     (-self.rv_lim, self.rv_lim),
-                    (opt[-1]-1/self.snr, opt[-1]+1/self.snr)
+                    (opt[-1]-0.1, opt[-1]+0.1)
                     ]
         elif not self.metal_poor and self.mode == 'Breidablik':
             fitter = FitBFixed(self.narrow_center[1:], self.broad_fit['std'], self.broad_fit['rv'], self.teff, self.logg, self.feh, self.ew_to_abund, self.min_ew, max_ew=self.max_ew, stdu=self.stdu)
             opt = [self.li_init_fit['amps'][0], self.li_init_fit['std'], *self.li_init_fit['amps'][1:], self.li_init_fit['const']]
-            bounds = [(max(opt[0]-self.norris*3, -self.max_ew), min(opt[0]+self.norris*3, self.max_ew)),
-                    (5e-4, self.stdu),
+            bounds = [(max(opt[0]-self.norris*5, -self.max_ew), min(opt[0]+self.norris*5, self.max_ew)),
+                    (5e-4, self.broad_fit['std']),
                     (max(0, opt[2]-self.norris*3), opt[2]+self.norris*3),
                     (max(0, opt[3]-self.norris*3), opt[3]+self.norris*3),
                     (max(0, opt[4]-self.norris*3), opt[4]+self.norris*3),
                     (max(0, opt[5]-self.norris*3), opt[5]+self.norris*3),
                     (max(0, opt[6]-self.norris*3), opt[6]+self.norris*3),
-                    (opt[-1]-1/self.snr, opt[-1]+1/self.snr)
+                    (opt[-1]-0.1, opt[-1]+0.1)
                     ]
         elif self.metal_poor and self.mode == 'Gaussian':
             fitter = FitG(stdl=self.stdl, stdu=self.stdu, rv_lim=self.rv_lim, std_galah=self.std_galah)
             opt = [self.li_init_fit['amps'][0], self.li_init_fit['std'], self.li_init_fit['rv'], self.li_init_fit['const']]
-            bounds = [(opt[0]-self.norris*3, opt[0]+self.norris*3),
+            bounds = [(opt[0]-self.norris*5, opt[0]+self.norris*5),
                     (self.stdl, self.stdu),
                     (-self.rv_lim, self.rv_lim),
-                    (opt[-1]-1/self.snr, opt[-1]+1/self.snr)
+                    (opt[-1]-0.1, opt[-1]+0.1)
                     ]
         elif not self.metal_poor and self.mode == 'Gaussian':
             fitter = FitGFixed(self.narrow_center, self.broad_fit['std'], self.broad_fit['rv'])
             opt = [*self.li_init_fit['amps'], self.li_init_fit['const']]
-            bounds = [(opt[0]-self.norris*3, opt[0]+self.norris*3),
+            bounds = [(opt[0]-self.norris*5, opt[0]+self.norris*5),
                     (max(0, opt[1]-self.norris*3), opt[1]+self.norris*3),
                     (max(0, opt[2]-self.norris*3), opt[2]+self.norris*3),
                     (max(0, opt[3]-self.norris*3), opt[3]+self.norris*3),
                     (max(0, opt[4]-self.norris*3), opt[4]+self.norris*3),
                     (max(0, opt[5]-self.norris*3), opt[5]+self.norris*3),
-                    (opt[-1]-1/self.snr, opt[-1]+1/self.snr)
+                    (opt[-1]-0.1, opt[-1]+0.1)
                     ]
         #TODO: bounds rely on opt to be good, which may fail in extreme rotating stars
         #TODO: maybe the fix is to check if opt matches mean from posterior and if not extend the region?
         
-        print(opt)
-        print(bounds)
         start = time.time()
-        un_fitter = UNFitter(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], fitter, bounds, mode=self.mode, metal_poor=self.metal_poor)
+        un_fitter = UNFitter(spectra['wave_norm'], spectra['sob_norm'], spectra['uob_norm'], fitter, bounds, mode=self.mode, metal_poor=self.metal_poor, e_vbroad=self.e_vbroad, e_rv=self.e_rv)#, run=False)
         end = time.time()
         self.sample = un_fitter.results
         self.time = end - start
         
-        hist, edges = np.histogram(self.sample['samples'][:,0], bins=100)
-        ind = np.argmax(hist)
-        if self.mode == 'Gaussian':
-            self.min_ew = 0
-        if ind <= 5 and abs(edges[0] - self.min_ew) > 1e-3:
-            print('ind', ind)
-            print('edge', edges[0])
-            print('opt', opt[0])
-            print('bound', bounds[0][0])
-            print('min', self.min_ew)
-            print('nor', self.norris)
-            print('cay', self.cayrel)
-            plt.hist(self.sample['samples'][:,0], bins=100)
-            plt.axvline(edges[ind], color='black')
-            plt.axvline(bounds[0][0], color='red')
-            plt.axvline(self.min_ew, color='green')
-            plt.show()
-
         # parse results
         self.err = np.percentile(self.sample['samples'][:,0], [50-68/2, 50+68/2])
         MAP = self.get_map()
@@ -495,16 +491,17 @@ class FitSpec:
         '''
         
         names = ['broad_fit', 'broad_center', # broad 
-                ]
-        dic = {'broad_fit':self.broad_fit, 'broad_center':self.broad_center, # broad region results
-                'metal_poor':self.metal_poor,
-                'li_init_fit': self.li_init_fit,
-                'li_fit':self.li_fit, 'narrow_center':self.narrow_center, # li region results
-                'mode':self.mode,
-                'cayrel':self.cayrel,
-                'norris':self.norris,
-                'sample':self.sample,
-                'time':self.time} 
+                'metal_poor',
+                'li_init_fit',
+                'li_fit', 'narrow_center',
+                'mode',
+                'cayrel',
+                'norris',
+                'sample',
+                'time']
+        dic = {}
+        for name in names:
+            dic[name] = getattr(self, name)
         np.save(filepath, dic)
    
     def load(self, filepath):
@@ -517,9 +514,9 @@ class FitSpec:
         '''
 
         dic = np.load(filepath, allow_pickle=True).item()
-        '''
         for name, value in dic.items():
             setattr(self, name, value)
+        self.err = np.percentile(self.sample['samples'][:,0], [50-68/2, 50+68/2])
         '''
         # broad region results
         self.broad_fit = dic['broad_fit']
@@ -536,3 +533,4 @@ class FitSpec:
         #self.time = dic['time']
         self.sample = dic['ultranest']
         self.err = np.percentile(self.sample['samples'][:,0], [50-68/2, 50+68/2])
+        '''
