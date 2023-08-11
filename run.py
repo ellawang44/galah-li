@@ -1,4 +1,5 @@
-from fit import FitBroad, FitG, FitGFixed, FitB, FitBFixed, iter_fit, amp_to_init, pred_amp, line, cc_rv, _spectra, _wl
+from fit import FitBroad, FitG, FitGFixed, FitB, FitBFixed, iter_fit, amp_to_init, pred_amp, cc_rv, _wl, bline, gline
+from synth import _spectra
 import numpy as np
 import matplotlib.pyplot as plt
 from breidablik.interpolate.spectra import Spectra
@@ -393,8 +394,8 @@ class FitSpec:
                 fit_list = [fit['amps'][0], fit['std'], fit['rv'], fit['const']]
             # error region
             if mode == 'posterior':
-                lower = line(spectra['wave_norm'], self.err[0], fit['std'], fit['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
-                upper = line(spectra['wave_norm'], self.err[1], fit['std'], fit['rv'], breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
+                lower = bline(spectra['wave_norm'], self.err[0], fit['std'], fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
+                upper = bline(spectra['wave_norm'], self.err[1], fit['std'], fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
         # Gaussian
         elif self.mode == 'Gaussian':
             if not self.metal_poor:
@@ -405,8 +406,8 @@ class FitSpec:
                 fit_list = [fit['amps'][0], fit['std'], fit['rv'], fit['const']]
             # error region
             if mode == 'posterior':
-                lower = line(spectra['wave_norm'], self.err[0], fit['std'], fit['rv'], center=self.li_center) 
-                upper = line(spectra['wave_norm'], self.err[1], fit['std'], fit['rv'], center=self.li_center) 
+                lower = gline(spectra['wave_norm'], self.err[0], fit['std'], fit['rv'], center=self.li_center) 
+                upper = gline(spectra['wave_norm'], self.err[1], fit['std'], fit['rv'], center=self.li_center) 
 
         # plot fit
         fitter.model(spectra['wave_norm'], fit_list, plot=True, plot_all=True, ax=axes)

@@ -3,55 +3,7 @@ from scipy.stats import norm
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
-from synth import bline, _c, _wl
-
-
-def line(x, ew, std, rv, center=None, breidablik=False, plot=False, ax=None, **kwargs):
-    '''Create a spectral line, either gaussian or from breidablik. There are some overlapping values.
-    
-    Parameters
-    ----------
-    x : 1darray
-        The wavelengths to evaluate the spectral line at
-    ew : float
-        The EW of the line
-    std : float
-        The standard deviation of the line. If breidablik=True, this is the amount that the std that goes into the Gaussian convolution.
-    rv : float
-        The radial velocity. 
-    center : float
-        The center that the line is at. Parameter ignored if breidablik=True.
-    breidablik : bool
-        If true, uses breidablik line profiles
-    plot : bool
-        Plot the individual lines. 
-    ax : matplotlib.axes, optional
-        The axis to plot on, if None, then it will create one to plot on
-
-    Returns
-    -------
-    y : 1darray
-        The spectral line, flux, at the input x wavelengths.
-    '''
-
-    lambda0 = 6707.814*(1+rv/299792.458) # line center is shifted
-    if breidablik: # breidablik line profile
-        flux = bline(ew=ew, std=std, **kwargs)
-        wl = _wl*(1+rv/299792.458)
-        y = CubicSpline(wl, flux)(x)
-    else: # Gaussian
-        y = 1-ew*norm.pdf(x, center*(1+rv/299792.458), std)
-
-    if plot:
-        if ax is None: # set axes
-            ax = plt
-        if breidablik:
-            ax.plot(x, y, label='Li')
-        else:
-            ax.plot(x, y)
-        ax.axvline(lambda0, linestyle='--')
-
-    return y
+from synth import bline, gline, _c, _wl
 
 
 def chisq(wl_obs, flux_obs, flux_err, model, params, bounds, wl_left=None, wl_right=None):
@@ -167,7 +119,7 @@ class FitG:
         ax : matplotlib.axes, optional
             The axis to plot on, if None, then it's the default one. 
         plot_all : bool
-            If True, plot each gaussian. Or else plot only final model.
+            Not used, only here to be consistent with other classes.
 
         Returns
         -------
@@ -177,13 +129,14 @@ class FitG:
         
         ew, std, offset, const = params
 
-        y = line(wl_obs, ew, std, offset, center=6707.814, plot=plot_all, ax=ax)
+        y = gline(wl_obs, ew, std, offset, center=6707.814)
         
         # plot
         if plot:
             if ax is None:
                 ax = plt
             ax.plot(wl_obs, y, label='fit')
+            ax.axvline(6707.814*(1+offset/_c), linestyle='--')
         
         y /= const
        
@@ -263,20 +216,24 @@ class FitGFixed:
         y : 1darray
             The model evaluated at given parameters. All gaussians multiplied together.
         '''
+
+        if plot:
+            if ax is None:
+                ax = plt
         
         *ews, const = params
         y = np.ones(len(wl_obs))
         
         for a, c in zip(ews, self.center):
-            y1 = line(wl_obs, a, self.std, self.rv, center=c, plot=plot_all, ax=ax)
+            y1 = gline(wl_obs, a, self.std, self.rv, center=c)
+            if plot_all:
+                ax.plot(wl_obs, y1)
             y *= y1
-       
-        # plot
+
         if plot:
-            if ax is None:
-                ax = plt
             ax.plot(wl_obs, y, label='fit')
-        
+            ax.axvline(6707.814*(1+self.rv/_c), linestyle='--')
+       
         y /= const
 
         return y
@@ -375,7 +332,13 @@ class FitB:
         '''
     
         ews, std, offset, const = params
-        y = line(wl_obs, ews, std, offset, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew, plot=plot, ax=ax)
+        y = bline(wl_obs, ews, std, offset, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew)
+
+        if plot:
+            if ax is None:
+                ax = plt
+            ax.plot(wl_obs, y, label='fit')
+            ax.axvline(6707.814*(1+offset/_c), linestyle='--')
         
         y /= const
 
@@ -476,18 +439,25 @@ class FitBFixed:
             The model evaluated at given parameters. Gaussians multiplied with Breidablik line profile.
         '''
 
+        if plot:
+            if ax is None:
+                ax = plt
+
         ali, std_li, *ews, const = params
-        y = line(wl_obs, ali, std_li, self.rv, breidablik=True, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew, plot=plot, ax=ax) 
+        y = bline(wl_obs, ali, std_li, self.rv, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
+        if plot:
+            ax.plot(wl_obs, y, label='Li')
         
         for a, c in zip(ews, self.center):
-            y1 = line(wl_obs, a, self.std, self.rv, center=c, plot=plot_all, ax=ax)
+            y1 = gline(wl_obs, a, self.std, self.rv, center=c)
+            if plot_all:
+                ax.plot(wl_obs, y1)
             y *= y1
         
         # plot
         if plot:
-            if ax is None:
-                ax = plt
             ax.plot(wl_obs, y, label='fit')
+            ax.axvline(6707.814*(1+self.rv/_c), linestyle='--')
         
         y /= const
         
@@ -576,17 +546,21 @@ class FitBroad:
             The model evaluated at given parameters. All gaussians multiplied together.
         '''
         
+        if plot:
+            if ax is None:
+                ax = plt
+        
         *ews, std, offset = params
         y = np.ones(len(wl_obs))
         
         for a, c in zip(ews, self.center):
-            y1 = line(wl_obs, a, std, offset, center=c, plot=plot_all, ax=ax)
+            y1 = gline(wl_obs, a, std, offset, center=c)
+            if plot_all:
+                ax.plot(wl_obs, y1)
             y *= y1
         
         # plot
         if plot:
-            if ax is None:
-                ax = plt
             ax.plot(wl_obs, y, label='fit')
         
         return y

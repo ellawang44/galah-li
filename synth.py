@@ -4,6 +4,7 @@ from breidablik.analysis import read
 from astro_tools import SpecAnalysis
 from scipy.stats import norm
 from astro_tools import vac_to_air
+from scipy.interpolate import CubicSpline
 
 _c = 299792.458 # speed of light in km s^-1 
 # optimised from 8s for 100 spectra to 2s - cut mainly, gaussian broadening versions don't make too much of a difference
@@ -12,15 +13,19 @@ _spectra = Spectra()
 _spectra.cut_models = _spectra.models[136:298]
 _wl = vac_to_air(read.get_wavelengths()*10)[136:298]
 
-def bline(ew, std, teff, logg, feh, ew_to_abund, min_ew):
+def bline(x, ew, std, rv, teff, logg, feh, ew_to_abund, min_ew):
     '''Breidablik line profiles
 
     Parameters
     ----------
+    x: 1darray
+        The wavelengths to evaluate the spectral line at
     ew : float
         The EW of the line
     std : float
         The standard deviation of the line. If breidablik=True, this is the amount that the std that goes into the Gaussian convolution.
+    rv : float
+        The radial velocity. 
     teff : float, optional
         Used in breidablik, teff of star
     logg : float, optional
@@ -51,8 +56,53 @@ def bline(ew, std, teff, logg, feh, ew_to_abund, min_ew):
         grads = (fluxes[1] - fluxes[0])/(grid_ews[1] - grid_ews[0])
         intercepts = fluxes[1] - grads*grid_ews[1]
         flux = ew*grads+intercepts
+    # rc
+    wl = _wl*(1+rv/_c)
+    if x is not None:
+        flux = CubicSpline(wl, flux)(x)
+        spec = SpecAnalysis(x, flux)
+    else:
+        spec = SpecAnalysis(wl, flux)
     # gaussian broaden
-    spec = SpecAnalysis(_wl, flux)
     _, flux = spec._gaussian_broaden(center=6707.814, sigma=std*2.35482*_c/6707.814)
     return flux
+
+def gline(x, ew, std, rv, center):
+    '''Create a Gaussian spectral line.
+    
+    Parameters
+    ----------
+    x : 1darray
+        The wavelengths to evaluate the spectral line at
+    ew : float
+        The EW of the line
+    std : float
+        The standard deviation of the line. If breidablik=True, this is the amount that the std that goes into the Gaussian convolution.
+    rv : float
+        The radial velocity. 
+    center : float
+        The center that the line is at.
+
+    Returns
+    -------
+    y : 1darray
+        The spectral line, flux, at the input x wavelengths.
+    '''
+
+    y = 1-ew*norm.pdf(x, center*(1+rv/_c), std)
+    return y
+
+class Grid:
+    def __init__(self):
+        pass
+
+    def make_grid(self, ewrange, stdrange, cutoff=3000, **kwargs):
+        ewnum = max(int(np.ceil((ewrange[1]-ewrange[0])/1e-3)), 2)
+        ews = np.linspace(ewrange[0], ewrange[1], ewnum)
+        stdnum = max(int(np.ceil((stdrange[1]-stdrange[0])/1e-2)), 2)
+        stds = np.linspace(stdrange[0], stdrange[1], stdnum)
+        if ewnum*stdnum > cutoff:
+            return None
+        flux = bline(_wl, ew, std, 0, **kwargs)
+        pass
 

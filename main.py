@@ -4,7 +4,7 @@ from read import read_spectra, read_meta, cut
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from fit import filter_spec, line, pred_amp
+from fit import filter_spec
 from scipy.stats import norm
 import argparse
 from run import FitSpec
@@ -13,8 +13,8 @@ import copy
 
 # set up plotting and saving
 save_fit = False # individual fits, 1 file per fit (all info)
-load_fit = True # individual fits, 1 file per fit  (all info)
-plot = False
+load_fit = False # individual fits, 1 file per fit  (all info)
+plot = True
 save = False # simplified fit results, compiled into 1 file
 
 # argparse to change keys easily
