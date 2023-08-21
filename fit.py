@@ -107,7 +107,7 @@ class FitG:
 
         return res.x, res.fun
 
-    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
+    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False, grid=None):
         '''Multiplying Gaussians together with a common std and rv. 
 
         wl_obs : np.array
@@ -120,6 +120,8 @@ class FitG:
             The axis to plot on, if None, then it's the default one. 
         plot_all : bool
             Not used, only here to be consistent with other classes.
+        grid : object
+            Not used.
 
         Returns
         -------
@@ -197,7 +199,7 @@ class FitGFixed:
 
         return res.x, res.fun
 
-    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
+    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False, grid=None):
         '''Multiplying Gaussians together with a common std and rv. 
 
         wl_obs : np.array
@@ -210,6 +212,8 @@ class FitGFixed:
             The axis to plot on, if None, then it's the default one. 
         plot_all : bool
             If True, plot each gaussian. Or else plot only final model.
+        grid : object
+            Not used. 
 
         Returns
         -------
@@ -311,7 +315,7 @@ class FitB:
        
         return res.x, res.fun
 
-    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
+    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False, grid=None):
         '''Breidablike ilne profile, with Gaussian broadening and rv shift.
 
         wl_obs : np.array
@@ -324,6 +328,8 @@ class FitB:
             The axis to plot on, if None, then it's the default one. 
         plot_all : bool
             This isn't used, it's just there to be consistent with the other classes.
+        grid : object, optional
+            The grid to interpolate on, speeds up interpolation. Look at Grid in synth.py
         
         Returns
         -------
@@ -332,7 +338,7 @@ class FitB:
         '''
     
         ews, std, offset, const = params
-        y = bline(wl_obs, ews, std, offset, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew)
+        y = bline(wl_obs, ews, std, offset, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew, grid=grid)
 
         if plot:
             if ax is None:
@@ -419,7 +425,7 @@ class FitBFixed:
 
         return res.x, res.fun
 
-    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False):
+    def model(self, wl_obs, params, plot=False, ax=None, plot_all=False, grid=None):
         '''Gaussians multiplied together with Breidablik line profile.
 
         wl_obs : np.array
@@ -432,6 +438,8 @@ class FitBFixed:
             The axis to plot on, if None, then it's the default one. 
         plot_all : bool
             If True, plot each gaussian. Or else plot only final model.
+        grid : object, optional
+            The grid to interpolate on, speeds up interpolation. Look at Grid in synth.py
         
         Returns
         -------
@@ -444,7 +452,7 @@ class FitBFixed:
                 ax = plt
 
         ali, std_li, *ews, const = params
-        y = bline(wl_obs, ali, std_li, self.rv, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
+        y = bline(wl_obs, ali, std_li, self.rv, teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew, grid=grid) 
         if plot:
             ax.plot(wl_obs, y, label='Li')
         

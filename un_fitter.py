@@ -5,11 +5,12 @@ from scipy.stats import norm
 
 class UNFitter():
 
-    def __init__(self, wl_obs, flux_obs, flux_err, fitter, constraints, mode, metal_poor, e_vbroad=None, e_rv=None, opt=None, nwalkers=8, run=True):
+    def __init__(self, wl_obs, flux_obs, flux_err, fitter, constraints, mode, metal_poor, e_vbroad=None, e_rv=None, opt=None, nwalkers=8, run=True, grid=None):
         self.wl_obs = wl_obs
         self.flux_obs = flux_obs
         self.flux_err = flux_err
         self.fitter = fitter
+        self.grid = grid
         self.c = 299792.458
         # define variables
         self.constraints = constraints 
@@ -101,5 +102,5 @@ class UNFitter():
         wl_left = 6706.730*(1+rv/self.c)-std*2
         wl_right = 6708.961*(1+rv/self.c)+std*2
         mask = (wl_left <= self.wl_obs) & (self.wl_obs <= wl_right)
-        return -np.sum(np.square((self.fitter.model(self.wl_obs[mask], param) - self.flux_obs[mask])/self.flux_err[mask]))
+        return -np.sum(np.square((self.fitter.model(self.wl_obs[mask], param, grid=self.grid) - self.flux_obs[mask])/self.flux_err[mask]))
 
