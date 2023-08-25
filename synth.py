@@ -140,7 +140,7 @@ class Grid:
             kwargs that go into the breidablik profile function.
         '''
         
-        self.ewnum = max(int(np.ceil((ewrange[1]-ewrange[0])/1e-3)), 2)
+        self.ewnum = max(int(np.ceil((ewrange[1]-ewrange[0])/1e-1)), 3)
         self.ews = np.linspace(ewrange[0], ewrange[1], self.ewnum)
         self.stdnum = max(int(np.ceil((stdrange[1]-stdrange[0])/1e-2)), 2)
         self.stds = np.linspace(stdrange[0], stdrange[1], self.stdnum)

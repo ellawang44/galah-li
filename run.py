@@ -86,7 +86,7 @@ class FitSpec:
         '''
 
         # calculate corresponding ews
-        abunds = list(np.arange(-0.5, 5.05, 0.5)) # extrapolating 1 dex
+        abunds = list(np.arange(-0.5, 5.1, 0.18)) # extrapolating 1 dex
         ews = np.array([self.li_center*10**tools.rew(_wl, spec, center=6709.659, upper=100, lower=100) for spec in _spectra._predict_flux(self.teff, self.logg, self.feh, abunds)])
         # set values
         self.min_ew = ews[0]
