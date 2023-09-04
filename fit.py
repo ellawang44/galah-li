@@ -422,7 +422,7 @@ class FitBFixed:
 
         func = lambda x: chisq(wl_obs, flux_obs, flux_err, self.model, x, bounds, wl_left=6706.730*(1+self.rv/_c)-self.std*2, wl_right=6708.961*(1+self.rv/_c)+self.std*2)
         res = minimize(func, init, method='Nelder-Mead')
-
+        
         return res.x, res.fun
 
     def model(self, wl_obs, params, plot=False, ax=None, plot_all=False, grid=None):

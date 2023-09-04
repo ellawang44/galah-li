@@ -12,9 +12,9 @@ from config import *
 import copy
 
 # set up plotting and saving
-save_fit = False # individual fits, 1 file per fit (all info)
+save_fit = True # individual fits, 1 file per fit (all info)
 load_fit = False # individual fits, 1 file per fit  (all info)
-plot = True
+plot = False
 save = False # simplified fit results, compiled into 1 file
 
 # argparse to change keys easily
@@ -55,9 +55,12 @@ elif key == 'test':
     #objectids = [131120002001376] # my lovely "quick" test case after implementing changes
     #objectids = [160813005101117] # bad spectrum, bad initial guess yes but not sure we need it to work for high std
     #objectids = [140708005801203, 140114005001165] # strong Li lines, used to run into edge, fixed itself after cont norm. zzz
-    #objectids = [140710003901284] # gadi is haunted
-    objectids = [140708005801203] # bad scipy fit
+    objectids = [140710003901284] # gadi is haunted
+    #objectids = [140708005801203] # bad scipy fit
     #objectids = list(np.load('data/benchmark.npy')) # benchmark stars
+    #objectids = [150607003602126] # blended star
+    #objectids = [140114005001165] # mcmc
+    #objectids = [140314005201392] # annoying star
 # actual run
 else:
     objectids = np.load(f'{info_directory}/id_dict.npy', allow_pickle=True).item()[key]
@@ -100,7 +103,8 @@ for i in objectids:
         e_vbroad[ind] = 10 # this is where 99% of the values are below
     if np.isnan(e_rv[ind]):
         e_rv[ind] = 3 # 99% of values are below
-    stdu = np.sqrt((vbroad[ind]+3*e_vbroad[ind])**2 + (299792.458/22000)**2)*factor # max std based on R=22000
+    stdu = np.sqrt(vbroad[ind]**2 + (299792.458/22000)**2)*factor # max std based on R=22000
+    stdue = np.sqrt((vbroad[ind]+3*e_vbroad[ind])**2 + (299792.458/22000)**2)*factor
     rv_lim = stdu/factor
     stdl = 0.09 #10km/s FWHM based on intrinsic broadening 
     #stdl = np.sqrt(vbroad[ind]**2 + (299792.458/32000)**2)*factor # min std based on R=32000
@@ -109,7 +113,7 @@ for i in objectids:
         continue
 
     # fitting
-    fitspec = FitSpec(std_galah=std_galah, stdl=stdl, stdu=stdu, rv_lim=rv_lim, e_vbroad=e_vbroad[ind]*factor, e_rv=e_rv[ind], snr=SNR[ind], sid=i, teff=teff[ind], logg=logg[ind], feh=feh[ind])
+    fitspec = FitSpec(std_galah=std_galah, stdl=stdl, stdu=stdu, stdue=stdue, rv_lim=rv_lim, e_vbroad=e_vbroad[ind]*factor, e_rv=e_rv[ind], snr=SNR[ind], sid=i, teff=teff[ind], logg=logg[ind], feh=feh[ind])
     # load fit
     if os.path.exists(f'{info_directory}/fits/{i}.npy') and load_fit:
         fitspec.load(f'{info_directory}/fits/{i}.npy')
@@ -122,9 +126,9 @@ for i in objectids:
 
         # fit li region
         fitspec.fit_li(spectra) 
-        
+
         # get error
-        #fitspec.posterior(spectra) # calculates the error approx and posterior
+        fitspec.posterior(spectra) # calculates the error approx and posterior
 
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
@@ -147,6 +151,8 @@ for i in objectids:
         fitspec.plot_li(spectra, mode='minimize')
         # plot cornerplot
         #fitspec.plot_corner()
+        # plot Li region
+        #fitspec.plot_li(spectra, mode='posterior')
 
 # need length check to make sure data isn't overwritten
 if save and len(data) != 0: 

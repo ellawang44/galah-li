@@ -13,7 +13,7 @@ class UNFitter():
         self.grid = grid
         self.c = 299792.458
         # define variables
-        self.constraints = constraints 
+        self.constraints = constraints
         ndim = len(self.constraints)
         self.mode = mode
         self.metal_poor = metal_poor
@@ -29,9 +29,9 @@ class UNFitter():
         if metal_poor:
             param_names = ['A(Li)', 'vbroad', 'rv', 'const']
         elif mode == 'Gaussian':
-            param_names = ['A(Li)', 'CN1', 'Fe', 'CN2', 'Ce/V', 'CN3', 'const']
+            param_names = ['A(Li)', 'CN1', 'Fe', 'CN2', 'Ce/V', '?1', '?2', 'const']
         elif mode == 'Breidablik':
-            param_names = ['A(Li)', 'vbroad', 'CN1', 'Fe', 'CN2', 'Ce/V', 'CN3', 'const']
+            param_names = ['A(Li)', 'vbroad', 'CN1', 'Fe', 'CN2', 'Ce/V', '?1', '?2', 'const']
         # if run the sample, or else just initialize class
         if run:
             self.sampler = ultranest.ReactiveNestedSampler(param_names, self.like, self.transform)
