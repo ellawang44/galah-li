@@ -136,7 +136,7 @@ class FitSpec:
         init = amp_to_init(amps, self.std_galah, init_rv, const)
         return init
 
-    def fit_li(self, spectra, center=np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.810, 6708.961])):
+    def fit_li(self, spectra, center=np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.810, 6709.011])):
         '''Fit the Li region of the spectrum, fits ew, std, and rv if metal-poor (less than 3 lines with amplitudes above noise), or else fixes std and rv and only fits ews.
         
         Parameters
@@ -145,7 +145,7 @@ class FitSpec:
             Dictionary containing spectrum, from read (keys: wave_norm, sob_norm, uob_norm) 
         center : 1darray
             The centers of the lines used in the fitting. First value is Li, not really used in the fitting, but needed for the initial guess. Default values:
-            np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.810, 6708.961]))
+            np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.810, 6709.01]))
         '''
         
         self.narrow_center = center # save centers used
@@ -192,7 +192,7 @@ class FitSpec:
         # save Li fit
         self.li_init_fit = {'amps':[res[0], *amps], 'std':std_li, 'rv':rv, 'const':const, 'minchisq':minchisq}
     
-    def fit_gaussian(self, spectra, center=np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.810, 6708.961])):
+    def fit_gaussian(self, spectra, center=np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.810, 6709.011])):
         '''Fit the Li region of the spectrum, fits ew, std, and rv if metal-poor (less than 3 lines with amplitudes above noise), or else fixes std and rv and only fits ews.
         
         Parameters
@@ -201,7 +201,7 @@ class FitSpec:
             Dictionary containing spectrum, from read (keys: wave_norm, sob_norm, uob_norm) 
         center : 1darray
             The centers of the lines used in the fitting. First value is Li, not really used in the fitting, but needed for the initial guess. Default values:
-            np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.810, 6708.961]))
+            np.array([6707.8139458, 6706.730, 6707.433, 6707.545, 6708.096, 6708.810, 6709.011]))
         '''
 
         if self.metal_poor:
@@ -262,7 +262,7 @@ class FitSpec:
         npix = 5
         self.norris = self.li_center*npix**0.5/(R*self.snr)
 
-    def posterior_setup(self, li_factor=5, blend_factor=3, const_range=0.1):
+    def posterior_setup(self, li_factor=5, blend_factor=5, const_range=0.1):
         '''Set up the fitter, bounds, grid required to sample posterior'''
 
         if self.metal_poor and self.mode == 'Breidablik':
@@ -349,7 +349,7 @@ class FitSpec:
                 const_range = 0.1
 
             # make new bounds
-            fitter, bounds, grid = self.posterior_setup(li_factor=10, blend_factor=10, const_range=const_range)
+            fitter, bounds, grid = self.posterior_setup(li_factor=20, blend_factor=20, const_range=const_range)
 
             # run mcmc
             start = time.time()
@@ -402,7 +402,7 @@ class FitSpec:
         '''
 
         # check cont
-        if argmax[-1] < 5 or argmax[-1] > 94:
+        if argmax[-1] < 10 or argmax[-1] > 89:
             return True, True
         # indicies for ew
         if metal_poor:
@@ -493,7 +493,7 @@ class FitSpec:
         axes.errorbar(spectra['wave_norm'], spectra['sob_norm'] * fit['const'], yerr=spectra['uob_norm'], label='observed', color='black', alpha=0.5)
         if ax is None:
             plt.title(f'{fit["amps"][0]:.4f} {fit["amps"][1]:.4f} {fit["std"]:.1f}')
-        
+    
         # Breidablik
         if self.mode == 'Breidablik':
             if not self.metal_poor:
