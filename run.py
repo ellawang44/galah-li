@@ -63,6 +63,7 @@ class FitSpec:
             self.mode = 'Breidablik'
         else:
             self.mode = 'Gaussian'
+            self.max_ew = np.inf
         # make model to translate between rew and abundance
         # can't run breidablik with nans
         if self.mode == 'Breidablik':
