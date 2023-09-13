@@ -46,7 +46,6 @@ objectids.append(150903002901344) # low detection
 # removing cont norm helps for ~10000 chisq
 
 for i in objectids:
-    print(i)
     spectra = read_spectra(i)
     if spectra is None:
         continue
@@ -112,9 +111,11 @@ for i in objectids:
         ax3 = fig.add_subplot(gs[1,:])
         ax3.imshow(corner)
         ax3.axis('off')
+    title = f'{fitspec.mode}'
     if not fitspec.posterior_good:
-        plt.title(str(fitspec.edge_ind))
-    plt.savefig(f'view/{s}{i}.png')
+        title = title + ' ' + str(fitspec.edge_ind)
+    plt.title(title)
+    plt.savefig(f'view/{i}.png')
     plt.close()
 
 

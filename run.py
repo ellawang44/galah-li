@@ -632,3 +632,5 @@ class FitSpec:
             setattr(self, name, value)
         if self.sample is not None:
             self.err = np.percentile(self.sample['samples'][:,0], [50-68/2, 50+68/2])
+        else:
+            self.err = [np.nan, np.nan]

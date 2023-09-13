@@ -12,10 +12,10 @@ from config import *
 import copy
 
 # set up plotting and saving
-save_fit = True # individual fits, 1 file per fit (all info)
-load_fit = False # individual fits, 1 file per fit  (all info)
+save_fit = False # individual fits, 1 file per fit (all info)
+load_fit = True # individual fits, 1 file per fit  (all info)
 plot = False
-save = False # simplified fit results, compiled into 1 file
+save = True # simplified fit results, compiled into 1 file
 
 # argparse to change keys easily
 parser = argparse.ArgumentParser(description='options for running')
@@ -32,7 +32,7 @@ elif key == 'test':
     objectids = []
     objectids.extend([170121002201384, 170121002201396, 170104002901059, 170108002201155, 170508006401346, 140812004401119, 140823001401041, 160418005601330, 180621002901320, 160519005201183, 160520002601357, 150607003602126, 150601003201221, 171228003702082, 160130003101273]) # a range of chisq to test new fitting
     objectids.extend([140808000901102, 131216003201003, 140209005201151]) # metal poor stars
-    #objectids.extend(list(np.load('data/benchmark.npy'))) # benchmark stars
+    objectids.extend(list(np.load('data/benchmark.npy'))) # benchmark stars
     objectids.append(150112002502282) # young excited lil star
     objectids.extend([171228003702082]) # cont norm is bad 
     objectids.extend([170516004101176, 150901002401298, 160420003301307, 150208005201271]) # std and rv still drawing a line for flag=0 -- old results, not sure if still on line now # currently using a non-giant test set for multiple gaussians
@@ -47,20 +47,8 @@ elif key == 'test':
     objectids.append(170510005801366) # very blended, very weak
     objectids.append(150903002901344) # low detection
     # inherant broadening FWHM 10 km/s
-    # initialise on pixel depth
-    # min, 10, 100, 1000, 10000, 100000, max
-    # removing cont norm helps for ~10000 chisq
-    #objectids=[140710003901284] # yeah so error region used to be too small, but it's fixed itself now that cont norm is part of the initial guess and I hate it. 
-    #objectids = [131216002601003] # Li is a bit narrow
     #objectids = [131120002001376] # my lovely "quick" test case after implementing changes
-    #objectids = [160813005101117] # bad spectrum, bad initial guess yes but not sure we need it to work for high std
-    #objectids = [140708005801203, 140114005001165] # strong Li lines, used to run into edge, fixed itself after cont norm. zzz
-    objectids = [140710003901284] # gadi is haunted
-    #objectids = [140708005801203] # bad scipy fit
-    #objectids = list(np.load('data/benchmark.npy')) # benchmark stars
-    #objectids = [150607003602126] # blended star
-    #objectids = [140114005001165] # mcmc
-    #objectids = [140314005201392] # annoying star
+    #objectids = [140314005201392] # TiO & CN filled star
 # actual run
 else:
     objectids = np.load(f'{info_directory}/id_dict.npy', allow_pickle=True).item()[key]
@@ -135,13 +123,16 @@ for i in objectids:
 
     if save:
         li_fit = fitspec.li_fit
+        # if no posterior fit was done
         if li_fit is None:
-            li_fit = {'amps':[np.nan], 'minchisq':np.nan, 'std':np.nan, 'rv':np.nan, 'pcov':[np.nan]}
+            li_fit = fitspec.li_init_fit
+
         broad_fit = fitspec.broad_fit
+        # if metal poor star - no broad fit
         if broad_fit is None:
             broad_fit = {'std':np.nan}
 
-        data_line = [i, li_fit['amps'][0], li_fit['minchisq'], broad_fit['std'], li_fit['std'], li_fit['rv']] #TODO: error from posterior, percentile is fine, but how to tell when skewed distribution?
+        data_line = [i, li_fit['amps'][0], broad_fit['std'], li_fit['std'], li_fit['rv'], *fitspec.err] 
         data.append(data_line)
     
     if plot:
@@ -164,19 +155,17 @@ if save and len(data) != 0:
         data[:,3],
         data[:,4],
         data[:,5],
-        #data[:,6],
-        #data[:,7]
+        data[:,6]
         ], 
         dtype=[
             ('sobject_id', int),
             ('ew_li', np.float64),
-            ('minchisq', np.float64),
             ('std', np.float64),
             ('li_std', np.float64),
-            ('rv', np.float64)
-            #('delta_ew', np.float64),
-            #('li_pcov', np.float64),
-            #('pcov', np.float64)
+            ('rv', np.float64),
+            ('err_low', np.float64),
+            ('err_upp', np.float64)
             ]
         )
     np.save(f'{output_directory}/{key}.npy', x)
+
