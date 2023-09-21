@@ -589,6 +589,8 @@ def pred_amp(wl_obs, flux_obs, flux_err, centers, rv=0, perc=95):
         The centers the lines are at -- these are the wls used to find the amplitudes
     rv : float
         rv shift, used to shift the centers
+    perc : float
+        The percentile to use for the continuum estimation.
 
     Returns
     -------
