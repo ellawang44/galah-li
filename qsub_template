@@ -9,4 +9,4 @@ cd ${main_directory}
 export PATH=/pkg/linux/anaconda3/bin:$PATH
 
 keys=(${keys})
-python3 hi.py -k ${keys[$PBS_ARRAY_INDEX]} 
+python3 main.py -k ${keys[$PBS_ARRAY_INDEX]} 
