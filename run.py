@@ -377,7 +377,7 @@ class FitSpec:
         spectra : dict
             The GALAH dictionary containing the spectra. 
         '''
-
+        
         # set up variables
         self.get_err(spectra['CDELT1'])
 
@@ -387,7 +387,9 @@ class FitSpec:
             self.li_fit = None
             self.time = None
             self.posterior_good = False
-            self.edge_ind = None
+            self.edge_ind = 99
+            self.err = [np.nan, np.nan]
+            self.rerun = None
             return None
 
         # set up bounds and fitters
@@ -399,11 +401,12 @@ class FitSpec:
         end = time.time()
         self.sample = un_fitter.results
         self.time = end - start
+        self.rerun = False
 
         # check if on edge
         _, argmax = self.get_map()
-        is_on_edge, due_to_const, _ = self.on_edge(argmax, bounds)
-        self.edge_ind = None
+        is_on_edge, due_to_const, edge_ind = self.on_edge(argmax, bounds)
+        self.edge_ind = edge_ind
 
         if is_on_edge:
             if due_to_const:
@@ -426,6 +429,7 @@ class FitSpec:
             _, argmax = self.get_map()
             is_on_edge, _, edge_ind = self.on_edge(argmax, bounds)
             self.edge_ind = edge_ind
+            self.rerun = True
         self.posterior_good = not is_on_edge
 
         # parse results
@@ -433,7 +437,7 @@ class FitSpec:
         MAP, _ = self.get_map()
         if self.metal_poor:
             li_ew, std_li, rv, const = MAP
-            amps = [0]*5
+            amps = [0]*6
         elif self.mode == 'Gaussian':
             li_ew, *amps, const = MAP
             rv = self.broad_fit['rv']
@@ -497,17 +501,36 @@ class FitSpec:
             inds = list(range(len(argmax)-1))
             del inds[1]
         # check all ews
+        edges = []
+        edge_inds = []
         for ind in inds:
-            # lower bound, if not hitting 0
-            if argmax[ind] < 5 and bounds[ind][0] > 0:
-                return True, False, ind
+            # lower bound
+            if argmax[ind] < 5:
+                # check that the Breidablik A(Li) bound isn't given by the min ew due to grid
+                if ind == 0 and self.mode == 'Breidablik' and bounds[ind][0] <= -self.max_ew:
+                    edges.append(False)
+                    edge_inds.append(0)
+                # lower bound is ok if 0 for blends
+                elif ind != 0 and bounds[ind][0] == 0:
+                    edges.append(False)
+                    edge_inds.append(99)
+                else:
+                    edges.append(True)
+                    edge_inds.append(ind)
             # upper bound
             elif argmax[ind] > 94:
                 # check that the Breidablik A(Li) bound isn't given by the max ew due to grid
-                if ind == 0 and self.mode == 'Breidablik' and bounds[ind][1] >= self.max_ew:
-                    return False, False, 0
-                return True, False, ind
-        return False, False, None
+                if ind == 0 and self.mode == 'Breidablik' and self.max_ew <= bounds[ind][1]:
+                    edges.append(False)
+                    edge_inds.append(0)
+                else:
+                    edges.append(True)
+                    edge_inds.append(ind)
+            # good parameter
+            else:
+                edges.append(False)
+                edge_inds.append(99)
+        return any(edges), False, min(edge_inds)
 
     def plot_broad(self, spectra, show=True, path=None, ax=None):
         '''Plot the broad region and the fits. Meant to be a convenience function for quickly checking the fits are working
@@ -699,10 +722,14 @@ class FitSpec:
                 'sample',
                 'posterior_good',
                 'edge_ind',
-                'time']
+                'time', 
+                'rerun']
         dic = {}
         for name in names:
-            dic[name] = getattr(self, name)
+            try:
+                dic[name] = getattr(self, name)
+            except:
+                dic[name] = None
         np.save(filepath, dic)
    
     def load(self, filepath):
