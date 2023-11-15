@@ -134,22 +134,6 @@ for i in objectids:
         # if metal poor star - no broad fit
         if broad_fit is None:
             broad_fit = {'std':np.nan}
-
-        # Nones break things
-        if fitspec.edge_ind is None:
-            fitspec.edge_ind = 99
-
-        if fitspec.err is None:
-            fitspec.err = [np.nan, np.nan]
-            fitspec.save(f'{info_directory}/fits/{i}.npy')
-
-        if fitspec.norris is None:
-            fitspec.norris = np.nan
-            fitspec.save(f'{info_directory}/fits/{i}.npy')
-
-        if fitspec.stone_good is None:
-            fitspec.stone_good = False
-            fitspec.save(f'{info_directory}/fits/{i}.npy')
         
         data_line = [i, li_fit['amps'][0], broad_fit['std'], li_fit['std'], li_fit['rv'], *fitspec.err, fitspec.edge_ind, fitspec.area, fitspec.stone_good, fitspec.norris] 
         data.append(data_line)
