@@ -47,12 +47,8 @@ elif key == 'test':
     objectids.append(170510005801366) # very blended, very weak
     objectids.append(150903002901344) # low detection
     # inherant broadening FWHM 10 km/s
-    #objectids = [131120002001376] # my lovely "quick" test case after implementing changes
+    objectids = [131120002001376] # "quick" test case after implementing changes
     #objectids = [140314005201392] # TiO & CN filled star
-    #objectids = [180620001701391] # bad continuum const, check later
-    #objectids = [150210002701226, 160524002701187, 181224002101375, 170106003601064] # err_upp < ew_li, example cases
-    # strange ali < 0.8 detections 
-    #objectids = [140414002601139, 150410003301377, 170710002201028] # RHS falls down too hard, causing upper error to be lower than MLE, should be fixed with new errors
 # actual run
 else:
     objectids = np.load(f'{info_directory}/id_dict.npy', allow_pickle=True).item()[key]
@@ -127,7 +123,7 @@ for i in objectids:
 
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
-    
+        
     if save:
         li_fit = fitspec.li_fit
         # if no posterior fit was done
@@ -143,7 +139,19 @@ for i in objectids:
         if fitspec.edge_ind is None:
             fitspec.edge_ind = 99
 
-        data_line = [i, li_fit['amps'][0], broad_fit['std'], li_fit['std'], li_fit['rv'], *fitspec.err, fitspec.edge_ind, fitspec.norris] 
+        if fitspec.err is None:
+            fitspec.err = [np.nan, np.nan]
+            fitspec.save(f'{info_directory}/fits/{i}.npy')
+
+        if fitspec.norris is None:
+            fitspec.norris = np.nan
+            fitspec.save(f'{info_directory}/fits/{i}.npy')
+
+        if fitspec.stone_good is None:
+            fitspec.stone_good = False
+            fitspec.save(f'{info_directory}/fits/{i}.npy')
+        
+        data_line = [i, li_fit['amps'][0], broad_fit['std'], li_fit['std'], li_fit['rv'], *fitspec.err, fitspec.edge_ind, fitspec.area, fitspec.stone_good, fitspec.norris] 
         data.append(data_line)
     
     if plot:
@@ -168,7 +176,9 @@ if save and len(data) != 0:
         data[:,5],
         data[:,6],
         data[:,7],
-        data[:,8]
+        data[:,8],
+        data[:,9],
+        data[:,10]
         ], 
         dtype=[
             ('sobject_id', int),
@@ -179,6 +189,8 @@ if save and len(data) != 0:
             ('err_low', np.float64),
             ('err_upp', np.float64),
             ('post_ind', int),
+            ('area', np.float64),
+            ('stone', bool),
             ('norris', np.float64)
             ]
         )

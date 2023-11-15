@@ -10,6 +10,7 @@ from astro_tools import vac_to_air
 from un_fitter import UNFitter
 import corner
 import time
+from stats import Stats
 
 class FitSpec:
     '''Fitting 1 spectrum, contains plotting, and save/load. 
@@ -385,11 +386,11 @@ class FitSpec:
         if self.bad_spec(spectra, self.li_init_fit['std']):
             self.sample = None
             self.li_fit = None
-            self.time = None
+            self.time = np.nan
             self.posterior_good = False
             self.edge_ind = 99
             self.err = [np.nan, np.nan]
-            self.rerun = None
+            self.rerun = False
             return None
 
         # set up bounds and fitters
@@ -433,7 +434,10 @@ class FitSpec:
         self.posterior_good = not is_on_edge
 
         # parse results
-        self.err = np.percentile(self.sample['samples'][:,0], [50-68/2, 50+68/2])
+        sample_stats = Stats(sample=self.sample['samples'][:,0])
+        self.stone_good = sample_stats.stone_good
+        self.err = [sample_stats.err_low, sample_stats.err_upp]
+        self.area = sample_stats.area
         MAP, _ = self.get_map()
         if self.metal_poor:
             li_ew, std_li, rv, const = MAP
@@ -446,7 +450,7 @@ class FitSpec:
             li_ew, std_li, *amps, const = MAP
             rv = self.broad_fit['rv']
 
-        self.li_fit = {'amps':[li_ew, *amps], 'const':const, 'std':std_li, 'rv':rv}
+        self.li_fit = {'amps':[sample_stats.MLE, *amps], 'const':const, 'std':std_li, 'rv':rv}
 
     def get_map(self, bins=100):
         '''Get the MAP from the sampled posterior.
@@ -723,7 +727,10 @@ class FitSpec:
                 'posterior_good',
                 'edge_ind',
                 'time', 
-                'rerun']
+                'rerun', 
+                'err', 
+                'area',
+                'stone_good']
         dic = {}
         for name in names:
             try:
@@ -744,7 +751,3 @@ class FitSpec:
         dic = np.load(filepath, allow_pickle=True).item()
         for name, value in dic.items():
             setattr(self, name, value)
-        if self.sample is not None:
-            self.err = np.percentile(self.sample['samples'][:,0], [50-68/2, 50+68/2])
-        else:
-            self.err = [np.nan, np.nan]
