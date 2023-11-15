@@ -7,7 +7,7 @@ from collections import defaultdict
 from config import *
 from string import Template as template
 
-alphabet = 'abcdefghijklmn'
+alphabet = 'abcdefghijklmnopq'
 
 data = [int(i[:-6]) for i in os.listdir(f'{working_directory}') if i[-4:] == 'fits']
 data = np.array(list(set(data)))

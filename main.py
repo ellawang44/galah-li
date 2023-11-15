@@ -12,8 +12,8 @@ from config import *
 import copy
 
 # set up plotting and saving
-save_fit = False # individual fits, 1 file per fit (all info)
-load_fit = True # individual fits, 1 file per fit  (all info)
+save_fit = True # individual fits, 1 file per fit (all info)
+load_fit = False # individual fits, 1 file per fit  (all info)
 plot = False
 save = True # simplified fit results, compiled into 1 file
 
@@ -47,7 +47,7 @@ elif key == 'test':
     objectids.append(170510005801366) # very blended, very weak
     objectids.append(150903002901344) # low detection
     # inherant broadening FWHM 10 km/s
-    #objectids = [131120002001376] # my lovely "quick" test case after implementing changes
+    objectids = [131120002001376] # "quick" test case after implementing changes
     #objectids = [140314005201392] # TiO & CN filled star
 # actual run
 else:
@@ -71,6 +71,9 @@ if save:
 
 for i in objectids:
     print(i)
+    #if save_fit and os.path.exists(f'{info_directory}/fits/{i}.npy'):
+    #    continue
+
     spectra = read_spectra(i)
     if spectra is None:
         continue
@@ -120,7 +123,7 @@ for i in objectids:
 
         if save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
-
+        
     if save:
         li_fit = fitspec.li_fit
         # if no posterior fit was done
@@ -131,8 +134,8 @@ for i in objectids:
         # if metal poor star - no broad fit
         if broad_fit is None:
             broad_fit = {'std':np.nan}
-
-        data_line = [i, li_fit['amps'][0], broad_fit['std'], li_fit['std'], li_fit['rv'], *fitspec.err] 
+        
+        data_line = [i, li_fit['amps'][0], broad_fit['std'], li_fit['std'], li_fit['rv'], *fitspec.err, fitspec.edge_ind, fitspec.area, fitspec.stone_good, fitspec.norris] 
         data.append(data_line)
     
     if plot:
@@ -141,9 +144,9 @@ for i in objectids:
         # plot Li region
         fitspec.plot_li(spectra, mode='minimize')
         # plot cornerplot
-        #fitspec.plot_corner()
+        fitspec.plot_corner()
         # plot Li region
-        #fitspec.plot_li(spectra, mode='posterior')
+        fitspec.plot_li(spectra, mode='posterior')
 
 # need length check to make sure data isn't overwritten
 if save and len(data) != 0: 
@@ -155,7 +158,11 @@ if save and len(data) != 0:
         data[:,3],
         data[:,4],
         data[:,5],
-        data[:,6]
+        data[:,6],
+        data[:,7],
+        data[:,8],
+        data[:,9],
+        data[:,10]
         ], 
         dtype=[
             ('sobject_id', int),
@@ -164,7 +171,11 @@ if save and len(data) != 0:
             ('li_std', np.float64),
             ('rv', np.float64),
             ('err_low', np.float64),
-            ('err_upp', np.float64)
+            ('err_upp', np.float64),
+            ('post_ind', int),
+            ('area', np.float64),
+            ('stone', bool),
+            ('norris', np.float64)
             ]
         )
     np.save(f'{output_directory}/{key}.npy', x)

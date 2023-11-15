@@ -710,7 +710,7 @@ def filter_spec(spec, sigma=5):
     spec['uob_norm'][mask_medium] = medium_sig
     # filter flux which sigma*error above 1
     #mask = mask & (spec['sob_norm'] < (1 + spec['uob_norm']*sigma))
-    # this filter is a terrible idea
+    # this filter results in things being overfiltered
     # write
     spec['uob_norm'] = spec['uob_norm'][mask]
     spec['sob_norm'] = spec['sob_norm'][mask]
