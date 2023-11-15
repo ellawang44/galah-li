@@ -27,11 +27,11 @@ class UNFitter():
                 p0[i][j] = np.random.uniform(minP, maxP)
         # names of columns
         if metal_poor:
-            param_names = ['A(Li)', 'vbroad', 'rv', 'const']
+            param_names = ['Li', 'vbroad', 'rv', 'const']
         elif mode == 'Gaussian':
-            param_names = ['A(Li)', 'CN1', 'Fe', 'CN2', 'Ce/V', '?1', '?2', 'const']
+            param_names = ['Li', 'CN1', 'Fe', 'CN2', 'Ce/V', '?1', '?2', 'const']
         elif mode == 'Breidablik':
-            param_names = ['A(Li)', 'vbroad', 'CN1', 'Fe', 'CN2', 'Ce/V', '?1', '?2', 'const']
+            param_names = ['Li', 'vbroad', 'CN1', 'Fe', 'CN2', 'Ce/V', '?1', '?2', 'const']
         # if run the sample, or else just initialize class
         if run:
             self.sampler = ultranest.ReactiveNestedSampler(param_names, self.like, self.transform)
