@@ -152,28 +152,11 @@ y_test_ur[upper_lim] = np.nan
 # error in teff
 X_test_lt = np.array([data['teff']-data['e_teff'], data['logg'], data['fe_h'], REW]).T
 X_test_ut = np.array([data['teff']+data['e_teff'], data['logg'], data['fe_h'], REW]).T
-<<<<<<< HEAD
 y_test_lt = ffnn.forward(scalar.transform(X_test_lt)).flatten()
 y_test_ut = ffnn.forward(scalar.transform(X_test_ut)).flatten()
 # set errors outside of grid to nan
-=======
-y_test = ffnn.forward(scalar.transform(X_test)).flatten()
-y_test_lr = ffnn.forward(scalar.transform(X_test_lr)).flatten()
-y_test_ur = ffnn.forward(scalar.transform(X_test_ur)).flatten()
-y_test_lt = ffnn.forward(scalar.transform(X_test_lt)).flatten()
-y_test_ut = ffnn.forward(scalar.transform(X_test_ut)).flatten()
-y_test_err = np.sqrt(np.sum(np.square(np.array([y_test_ur - y_test_lr, y_test_ut - y_test_lt])/2), axis = 0))
-# needs to fall in li grid, lower extrapolation is ok, upper is not due to non-linearity
-in_grid = in_grid & (y_test <= 4) 
-# set error in teff to nan if error outside grid
->>>>>>> bb383e239af94eeb1ad0cc800c61314a11662e77
-eteff_l = grid_check(data['teff']-data['e_teff'], data['logg'], data['fe_h'])
-# TODO: assume lower error is the same as the upper error in these cases, instead of doing nan
-#TODO: double check that this works if the temperature is outside of the grid
-#TODO: what if both errors are outside of the grid?? 
-y_test_lt[~eteff_l] = np.nan
-eteff_u = grid_check(data['teff']+data['e_teff'], data['logg'], data['fe_h'])
-y_test_ut[~eteff_u] = np.nan
+y_test_lt[~lgrid] = np.nan
+y_test_ut[~ugrid] = np.nan
 # mirror errors in teff where nan
 mask_lt = np.isnan(y_test_lt)
 y_test_lt[mask_lt] = (y_test - (y_test_ut - y_test))[mask_lt]
