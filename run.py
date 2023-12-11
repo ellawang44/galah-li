@@ -242,6 +242,7 @@ class FitSpec:
             pred = fitter.model(spectra['wave_norm'], init)
             pred_amps, _, const = pred_amp(spectra['wave_norm'], pred, spectra['uob_norm'], centers=self.narrow_center, rv=self.broad_fit['rv'])
             ratio = pred_amps/amps
+            ratio[np.isnan(ratio)] = 1 # sometimes there's a divide by 0 where amps is 0
             # better amps
             amps = amps/ratio
             init = amp_to_init(amps, self.broad_fit['std'], self.broad_fit['rv'], const)
@@ -617,8 +618,14 @@ class FitSpec:
                 fit_list = [fit['amps'][0], fit['std'], fit['rv'], fit['const']]
             # error region
             if mode == 'posterior':
-                lower = bline(spectra['wave_norm'], self.err[0], fit['std'], fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
-                upper = bline(spectra['wave_norm'], self.err[1], fit['std'], fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
+                if not np.isnan(self.err[0]):
+                    lower = bline(spectra['wave_norm'], self.err[0], fit['std'], fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
+                else:
+                    lower = np.nan
+                if not np.isnan(self.err[1]):
+                    upper = bline(spectra['wave_norm'], self.err[1], fit['std'], fit['rv'], teff=self.teff, logg=self.logg, feh=self.feh, ew_to_abund=self.ew_to_abund, min_ew=self.min_ew) 
+                else:
+                    upper = np.nan
         # Gaussian
         elif self.mode == 'Gaussian':
             if not self.metal_poor:
