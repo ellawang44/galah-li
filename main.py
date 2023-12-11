@@ -11,47 +11,28 @@ from run import FitSpec
 from config import *
 import copy
 
-# set up plotting and saving
-save_fit = True # individual fits, 1 file per fit (all info)
-load_fit = False # individual fits, 1 file per fit  (all info)
-plot = False
-save = True # simplified fit results, compiled into 1 file
-
 # argparse to change keys easily
 parser = argparse.ArgumentParser(description='options for running')
 parser.add_argument('-k', '--key', metavar='key', type=str, default='test', help='change the observations which are run, year/month. Needs to match id_dict contents')
+parser.add_argument('--sid', metavar='sid', type=int, default=131120002001376, help='The sobject_id of the star to be run, default star is a "quick" test case')
+parser.add_argument('--save_fit', action='store_true', help='save individual fits, 1 file per fit (all info)')
+parser.add_argument('--load_fit', action='store_true', help='load individual fits, 1 file per fit  (all info)')
+parser.add_argument('--plot', action='store_true', help='plot results')
+parser.add_argument('--save', action='store_true', help='save simplified fit results, compiled into 1 file')
 args = parser.parse_args()
-key = args.key
+load_fit = args.load_fit
 
 # if this key has already been run, don't run again
-if os.path.exists(f'{output_directory}/{key}.npy') and save:
-    print(f'Please remove results file for key {key} to re-run results')
+if os.path.exists(f'{output_directory}/{args.key}.npy') and args.save:
+    print(f'Please remove results file for key {args.key} to re-run results')
     objectids = []
 # testing purposes
-elif key == 'test':
-    objectids = []
-    objectids.extend([170121002201384, 170121002201396, 170104002901059, 170108002201155, 170508006401346, 140812004401119, 140823001401041, 160418005601330, 180621002901320, 160519005201183, 160520002601357, 150607003602126, 150601003201221, 171228003702082, 160130003101273]) # a range of chisq to test new fitting
-    objectids.extend([140808000901102, 131216003201003, 140209005201151]) # metal poor stars
-    objectids.extend(list(np.load('data/benchmark.npy'))) # benchmark stars
-    objectids.append(150112002502282) # young excited lil star
-    objectids.extend([171228003702082]) # cont norm is bad 
-    objectids.extend([170516004101176, 150901002401298, 160420003301307, 150208005201271]) # std and rv still drawing a line for flag=0 -- old results, not sure if still on line now # currently using a non-giant test set for multiple gaussians
-    objectids.append(131120002001376) # high Li GC star
-    objectids.extend([140314002601106, 140607000701111, 160403002501179]) # saturated stars
-    objectids.extend([131119001701221, 131216002601003, 150607003602126, 160530002201097]) # Ce/V strong star, benchmark 0, 1 might be good edge case
-    objectids.append(161116002201392) # high feh, giant, check CN is fine, 
-    objectids.extend([180604003701205, 180604003701233, 170412004902165, 140710000801284]) # SNR > 1200, check CN is fine
-    objectids.extend([160813005101117, 170912001201076]) # the spectrum is too blended, the initial guess is very hard to do correctly, current fit is bad, needs better initial guess
-    objectids.extend([140808000901102, 150607003602126, 170506003401371, 160403002501179]) # paper examples
-    objectids.extend([140607000701111, 160403002501179, 170506003401371, 140808000901102]) # mcmc test
-    objectids.append(170510005801366) # very blended, very weak
-    objectids.append(150903002901344) # low detection
+elif args.key == 'test':
+    objectids = [args.sid]
     # inherant broadening FWHM 10 km/s
-    objectids = [131120002001376] # "quick" test case after implementing changes
-    #objectids = [140314005201392] # TiO & CN filled star
 # actual run
 else:
-    objectids = np.load(f'{info_directory}/id_dict.npy', allow_pickle=True).item()[key]
+    objectids = np.load(f'{info_directory}/id_dict.npy', allow_pickle=True).item()[args.key]
 
 # calculate factors and get metadata values
 data = np.load(f'{info_directory}/DR3_Li.npy')
@@ -66,13 +47,11 @@ vbroad = data['vbroad']
 e_vbroad = data['e_vbroad']
 factor = 6707.814/(2*np.sqrt(2*np.log(2)))/299792.458 # convert from km/s to \AA for std, might have a FWHM too
 
-if save:
+if args.save:
     data = []
 
 for i in objectids:
     print(i)
-    #if save_fit and os.path.exists(f'{info_directory}/fits/{i}.npy'):
-    #    continue
 
     spectra = read_spectra(i)
     if spectra is None:
@@ -95,7 +74,7 @@ for i in objectids:
     if np.isnan(e_rv[ind]):
         e_rv[ind] = 3 # 99% of values are below
     stdu = np.sqrt(vbroad[ind]**2 + (299792.458/22000)**2)*factor # max std based on R=22000
-    stdue = np.sqrt((vbroad[ind]+3*e_vbroad[ind])**2 + (299792.458/22000)**2)*factor
+    stdue = np.sqrt((vbroad[ind]+e_vbroad[ind])**2 + (299792.458/22000)**2)*factor
     rv_lim = stdu/factor
     stdl = 0.09 #10km/s FWHM based on intrinsic broadening 
     #stdl = np.sqrt(vbroad[ind]**2 + (299792.458/32000)**2)*factor # min std based on R=32000
@@ -106,9 +85,9 @@ for i in objectids:
     # fitting
     fitspec = FitSpec(std_galah=std_galah, stdl=stdl, stdu=stdu, stdue=stdue, rv_lim=rv_lim, e_vbroad=e_vbroad[ind]*factor, e_rv=e_rv[ind], snr=SNR[ind], sid=i, teff=teff[ind], logg=logg[ind], feh=feh[ind])
     # load fit
-    if os.path.exists(f'{info_directory}/fits/{i}.npy') and load_fit:
+    if os.path.exists(f'{info_directory}/fits/{i}.npy') and args.load_fit:
         fitspec.load(f'{info_directory}/fits/{i}.npy')
-        if save_fit:
+        if args.save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
     # fit
     else:
@@ -121,35 +100,35 @@ for i in objectids:
         # get error
         fitspec.posterior(spectra) # calculates the error approx and posterior
 
-        if save_fit:
+        if args.save_fit:
             fitspec.save(f'{info_directory}/fits/{i}.npy')
-        
-    if save:
+
+    if args.save:
         li_fit = fitspec.li_fit
         # if no posterior fit was done
         if li_fit is None:
             li_fit = fitspec.li_init_fit
 
         broad_fit = fitspec.broad_fit
-        # if metal poor star - no broad fit
+        # if poorly constrained star - no broad fit
         if broad_fit is None:
             broad_fit = {'std':np.nan}
         
         data_line = [i, li_fit['amps'][0], broad_fit['std'], li_fit['std'], li_fit['rv'], *fitspec.err, fitspec.edge_ind, fitspec.area, fitspec.stone_good, fitspec.norris] 
         data.append(data_line)
     
-    if plot:
+    if args.plot:
         # plot broad region
         fitspec.plot_broad(spectra_broad)
         # plot Li region
         fitspec.plot_li(spectra, mode='minimize')
-        # plot cornerplot
-        fitspec.plot_corner()
-        # plot Li region
-        fitspec.plot_li(spectra, mode='posterior')
-
-# need length check to make sure data isn't overwritten
-if save and len(data) != 0: 
+        if fitspec.sample is not None:
+            # plot cornerplot
+            fitspec.plot_corner()
+            # plot Li region
+            fitspec.plot_li(spectra, mode='posterior')
+        
+if args.save: 
     data = np.array(data)
     x = np.rec.array([
         data[:,0],
