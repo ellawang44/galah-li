@@ -9,9 +9,6 @@ from load import FFNN
 from config import *
 from read import read_spectra, read_meta, cut
 
-#TODO: check posteriors of high abundances
-#TODO: check high abundance stuff after deciding what to do for errors
-
 output_directory = 'results'
 def grid_check(teffs, loggs, fehs):
     with open('grid_snapshot.txt', 'r') as f:
@@ -30,8 +27,6 @@ def grid_check(teffs, loggs, fehs):
 ##
 
 sigma_num = 2
-
-#TODO: how do upper limits correlate to anything? S/N? Teff? Abundance? 
 
 start = time.time()
 # read in data and combine into 1 array - it doesn't take too long to run.
@@ -69,17 +64,6 @@ flag_ali_err = data['post_ind'] == 0
 print('no. with bad posterior (A(Li))', np.sum(flag_ali_err))
 
 print('no. of spectra', data.shape)
-
-# manually remove binaries, bad cont norm
-'''
-# TODO: move this to somewhere else, we should still provide measured results
-remove_ids = [170602002201196, 140310002701035, 140311008101002]
-remove_ids.extend([140808001101091, 161006005401161]) # binary
-remove_inds = [np.where(data['sobject_id'] == i)[0][0] for i in remove_ids]
-data = np.delete(data, remove_inds, axis=0)
-
-print('remove binary', 'no. of spectra', data.shape)
-'''
 
 # read in model
 model_path = '/priv/avatar/ellawang/galah-li/model'
@@ -176,7 +160,7 @@ x = np.rec.array([
     data['e_logg'],
     data['fe_h'],
     data['e_fe_h'],
-    data['ew_li']*1000,
+    data['ew_li']*1000, # AA to mAA
     data['err_low']*1000,
     data['err_upp']*1000,
     data['norris']*1000,
