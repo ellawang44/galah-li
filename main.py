@@ -38,7 +38,6 @@ else:
 data = np.load(f'{info_directory}/DR3_Li.npy')
 sobject_id = data['sobject_id']
 SNR = data['snr_c3_iraf']
-DR3_rvs = data['rv_galah']
 e_rv = data['e_rv_galah']
 teff = data['teff']
 logg = data['logg']
