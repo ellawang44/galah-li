@@ -54,13 +54,6 @@ def read_meta(directory=info_directory):
                 ]
             )
     np.save(f'{directory}/DR3_Li.npy', x)
-    # make a hashmap between the sobject_ids and their indicies - done for speed
-    # need this when analysing results
-    objectid = data['sobject_id']
-    hashmap = {}
-    for ind, oid in enumerate(objectid):
-        hashmap[oid] = ind
-    np.save(f'{directory}/hashmap.npy', hashmap)
 
 def read_spectra(sobject_id):
     """

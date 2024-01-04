@@ -156,5 +156,5 @@ if args.save:
             ('norris', np.float64)
             ]
         )
-    np.save(f'{output_directory}/{key}.npy', x)
+    np.save(f'{output_directory}/{args.key}.npy', x)
 

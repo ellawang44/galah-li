@@ -21,3 +21,6 @@ DR = 'GALAH_DR3_main_allspec_v2.fits'
 
 # results directory
 output_directory = '/priv/avatar/ellawang/galah-li/results'
+
+# breidablik model directory
+model_path = '/priv/avatar/ellawang/galah-li/model'

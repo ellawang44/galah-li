@@ -68,7 +68,6 @@ print('no. with bad posterior (A(Li))', np.sum(flag_ali_err))
 print('no. of spectra', data.shape)
 
 # read in model
-model_path = '/priv/avatar/ellawang/galah-li/model'
 ffnn = FFNN(model=model_path+'/rew')
 scalar = Scalar()
 scalar.load(model_path+'/rew/scalar.npy')
