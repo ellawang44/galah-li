@@ -176,11 +176,10 @@ x = [
     data['flag_fe_h'],
     data['snr_c3_iraf']
     ]
-names = [
-        'sobject_id',
+names = ['sobject_id',
         'star_id',
-        'sigma_broad',
-        'sigma_Li',
+        'fwhm_broad',
+        'fwhm_Li',
         'vbroad_DR3',
         'delta_rv_6708',
         'rv_DR3',
